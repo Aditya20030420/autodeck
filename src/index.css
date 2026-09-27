@@ -1,0 +1,142 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+/* Class-based dark mode (toggled by adding .dark on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root { --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; }
+/* Palette: Base Slate #1E293B, Electric Teal #0EA5E9, Soft Gray #E2E8F0, Charcoal #0F172A, Laser Lime #84CC16 */
+body { font-family: var(--font-display); -webkit-font-smoothing: antialiased; background: #E7ECF3; }
+:where(.dark) body { background: #16304A; }  /* navy (blends with the app icon) */
+
+/* Aurora backdrop — Electric Teal + Laser Lime orbs behind the glass */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38rem 38rem at 12% 8%, rgba(14,165,233,.20), transparent 60%),
+    radial-gradient(34rem 34rem at 88% 16%, rgba(31,54,82,.10), transparent 60%),
+    radial-gradient(40rem 40rem at 72% 92%, rgba(132,204,22,.16), transparent 62%);
+}
+:where(.dark) body::before {
+  background:
+    radial-gradient(38rem 38rem at 12% 8%, rgba(14,165,233,.26), transparent 60%),
+    radial-gradient(34rem 34rem at 88% 16%, rgba(14,165,233,.14), transparent 60%),
+    radial-gradient(40rem 40rem at 72% 92%, rgba(132,204,22,.16), transparent 62%);
+}
+
+/* Frosted glass surface — web glassmorphism approximation (not Apple Liquid Glass) */
+.glass {
+  background: rgba(255,255,255,.55);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255,255,255,.6);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 12px 32px -14px rgba(15,23,42,.22);
+}
+:where(.dark) .glass {
+  background: rgba(31,54,82,.55);
+  border-color: rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 18px 44px -16px rgba(0,0,0,.7);
+}
+/* lighter surface for task cards — no backdrop-blur (cards scroll; blur there
+   causes continuous GPU repaints and jank on mobile). Higher opacity keeps them legible. */
+.glass-sm {
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(255,255,255,.6);
+}
+:where(.dark) .glass-sm { background: rgba(31,54,82,.72); border-color: rgba(255,255,255,.07); }
+
+/* Accessibility: drop transparency/blur when the OS asks for it */
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass-sm { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(255,255,255,.96); }
+  :where(.dark) .glass, :where(.dark) .glass-sm { background: rgba(31,54,82,.96); }
+}
+
+/* Themed focus ring — replaces the browser's default (amber) outline, keyboard-a11y intact */
+:focus-visible { outline: 2px solid #0EA5E9; outline-offset: 2px; border-radius: 4px; }
+:where(button, [role="button"]):focus:not(:focus-visible) { outline: none; }
+
+/* soft diffused ambient shadow (tinted, never harsh black) */
+.shadow-soft { box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px -12px rgba(15,23,42,.14); }
+:where(.dark) .shadow-soft { box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -16px rgba(0,0,0,.6); }
+/* concentric inner highlight for the double-bezel inner core */
+.bezel-core { box-shadow: inset 0 1px 1px rgba(255,255,255,.6); }
+:where(.dark) .bezel-core { box-shadow: inset 0 1px 1px rgba(255,255,255,.06); }
+
+@keyframes pop { 0% { transform: scale(.8); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
+.animate-pop { animation: pop .18s ease-out; }
+
+/* card entrance — slides up + fades in on mount */
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+.animate-fade-up { animation: fade-up .3s cubic-bezier(.22,1,.36,1) both; }
+
+/* header / dashboard entrance */
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+.animate-fade-in { animation: fade-in .4s ease-out both; }
+
+/* celebration party icon */
+@keyframes wiggle { 0%,100% { transform: rotate(-8deg) scale(1.1) } 50% { transform: rotate(8deg) scale(1.2) } }
+.animate-wiggle { animation: wiggle .5s ease-in-out infinite; }
+
+/* bell rings periodically when notifications are active */
+@keyframes bell-swing {
+  0%, 55%, 100% { transform: rotate(0) }
+  60% { transform: rotate(14deg) }
+  68% { transform: rotate(-11deg) }
+  76% { transform: rotate(8deg) }
+  84% { transform: rotate(-5deg) }
+  92% { transform: rotate(2deg) }
+}
+.animate-bell { animation: bell-swing 3s ease-in-out infinite; transform-origin: 50% 15%; }
+
+/* slow rotation for the greeting sun/sunrise icon */
+@keyframes spin-slow { to { transform: rotate(360deg) } }
+.animate-spin-slow { animation: spin-slow 18s linear infinite; }
+
+/* gentle bob for empty-state icons */
+@keyframes float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+/* soft opacity breathe for board header icons */
+@keyframes soft-pulse { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
+.animate-soft-pulse { animation: soft-pulse 2.6s ease-in-out infinite; }
+
+/* pulsing glow for the progress ring at 100% */
+@keyframes glow-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2.5px rgba(45,212,191,.5)); }
+  50% { filter: drop-shadow(0 0 7px rgba(45,212,191,.95)); }
+}
+.glow-pulse { animation: glow-pulse 1.8s ease-in-out infinite; }
+
+/* export/import arrow: slide off one side, fade, reappear from the other */
+@keyframes arrow-down {
+  0% { transform: translateY(0); opacity: 1 }
+  45% { transform: translateY(7px); opacity: 0 }
+  46% { transform: translateY(-9px); opacity: 0 }
+  100% { transform: translateY(0); opacity: 1 }
+}
+@keyframes arrow-up {
+  0% { transform: translateY(0); opacity: 1 }
+  45% { transform: translateY(-7px); opacity: 0 }
+  46% { transform: translateY(9px); opacity: 0 }
+  100% { transform: translateY(0); opacity: 1 }
+}
+button:hover .ad-arrow-dn { animation: arrow-down .65s cubic-bezier(.4, 0, .2, 1); }
+button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1); }
+
+/* centered strikethrough (native line-through sits too low in this font) */
+@keyframes strike-in { from { transform: translateY(-50%) scaleX(0) } to { transform: translateY(-50%) scaleX(1) } }
+.strike { position: relative; }
+.strike::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1.5px;
+  background: currentColor; border-radius: 1px;
+  transform: translateY(-50%); transform-origin: left;
+  animation: strike-in .25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop, .animate-fade-up, .animate-fade-in, .animate-wiggle,
+  .animate-bell, .animate-spin-slow, .animate-float, .animate-soft-pulse { animation: none; }
+  .strike::after { animation: none; }
+  button:hover .ad-arrow-dn, button:hover .ad-arrow-up { animation: none; }
+  .glow-pulse { animation: none; filter: drop-shadow(0 0 5px rgba(45,212,191,.7)); }
+}

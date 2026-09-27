@@ -1,0 +1,7 @@
+node_modules
+dist
+
+# Claude Code tooling / vendored skills (not part of the app)
+.agents/
+.claude/skills/
+skills-lock.json
