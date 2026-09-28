@@ -1,5 +1,10 @@
 node_modules
 dist
+release
+
+# Generated build artifacts (icons are produced by scripts/gen-icon.mjs)
+build/
+electron/icon.png
 
 # Claude Code tooling / vendored skills (not part of the app)
 .agents/
