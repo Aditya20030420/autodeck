@@ -683,7 +683,7 @@ export default function TodoApp() {
               <DndContext sensors={sensors} collisionDetection={closestCenter}
                 onDragEnd={({ active, over }) => { if (over && active.id !== over.id) reorder(active.id, over.id) }}>
                 <SortableContext items={pending.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                  <ul className="space-y-2">
+                  <ul className="space-y-2" aria-label="Pending tasks">
                     {pending.map((task, i) => (
                       <SortableTaskCard key={task.id} task={task} index={i} editing={editingId === task.id}
                         onToggle={toggle} onEdit={setEditingId} onRename={rename}
@@ -701,7 +701,7 @@ export default function TodoApp() {
               <EmptyState icon={CheckCircle2}
                 title="Nothing done yet" copy="Check off a task and it lands here." />
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-2" aria-label="Completed tasks">
                 {completed.map((task, i) => (
                   <TaskCard key={task.id} task={task} index={i} editing={editingId === task.id}
                     onToggle={toggle} onEdit={setEditingId} onRename={rename}
@@ -912,6 +912,7 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
   return (
     <li
       ref={dragRef}
+      aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${task.reminder}.` : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
       style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: CATEGORY_BORDER[task.category] }}
       className={`glass-sm group animate-fade-up rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
       task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
@@ -936,7 +937,7 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
           {task.done && <Check size={13} strokeWidth={3} className="animate-pop" />}
         </button>
 
-        <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} title={`${task.priority} priority`} />
+        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} title={`${task.priority} priority`} />
 
         {/* text / inline edit */}
         {editing ? (
@@ -954,7 +955,7 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
         ) : (
           <span
             onDoubleClick={() => onEdit(task.id)}
-            className={`flex-1 truncate text-sm ${task.done ? 'text-slate-400' : ''}`}
+            className={`min-w-0 flex-1 truncate text-sm ${task.done ? 'text-slate-400' : ''}`}
           >
             <span className={task.done ? 'strike' : ''}>{task.text}</span>
           </span>
@@ -970,11 +971,11 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
           </button>
         )}
 
-        {/* badges */}
-        <span className={`hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline ${PRIORITY_BADGE[task.priority]}`}>
+        {/* badges — shown on all sizes now (priority/category visible on mobile too) */}
+        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${PRIORITY_BADGE[task.priority]}`}>
           {task.priority}
         </span>
-        <span className={`hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline ${CATEGORY_BADGE[task.category]}`}>
+        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${CATEGORY_BADGE[task.category]}`}>
           {task.category}
         </span>
         {task.reminder && (

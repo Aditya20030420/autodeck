@@ -2,7 +2,21 @@
 
 **Your workflow, on autopilot.** — a glassmorphic, single-page daily to-do app that resets each day and keeps you focused on *today*.
 
+[![Live demo](https://img.shields.io/badge/demo-live-2DD4BF?style=flat-square)](https://aditya20030420.github.io/autodeck/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0EA5E9?style=flat-square)](LICENSE)
+![React](https://img.shields.io/badge/React-18-0EA5E9?style=flat-square)
+![Vite](https://img.shields.io/badge/Vite-6-84CC16?style=flat-square)
+
 > Vite + React 18 + Tailwind CSS v4. All UI logic lives in one component (`src/TodoApp.jsx`).
+
+**▶︎ Try it live: https://aditya20030420.github.io/autodeck/**
+
+![AutoDeck screenshot](docs/screenshot.png)
+
+## Get it
+
+- **Web** — open the [live demo](https://aditya20030420.github.io/autodeck/) (works on any device; installable soon).
+- **Windows desktop** — download `AutoDeck.exe` from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page (portable, no install). Or build it yourself: `npm run electron:build`.
 
 ---
 
