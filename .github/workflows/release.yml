@@ -20,8 +20,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run electron:build
-      - name: Publish release with AutoDeck.exe
+      - name: Publish release with installer + portable exe
         uses: softprops/action-gh-release@v2
         with:
-          files: release/AutoDeck.exe
+          files: release/*.exe
           generate_release_notes: true

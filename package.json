@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:build": "node scripts/gen-icon.mjs && vite build && electron-builder --win portable"
+    "electron:build": "node scripts/gen-icon.mjs && vite build && electron-builder --win"
   },
   "build": {
     "appId": "com.autodeck.app",
@@ -19,11 +19,20 @@
       "electron/**/*"
     ],
     "win": {
-      "target": "portable",
+      "target": ["nsis", "portable"],
       "icon": "build/icon.ico"
     },
     "portable": {
-      "artifactName": "AutoDeck.exe"
+      "artifactName": "AutoDeck-Portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AutoDeck",
+      "artifactName": "AutoDeck-Setup-${version}.${ext}"
     }
   },
   "dependencies": {
