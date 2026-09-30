@@ -21,6 +21,14 @@ function createWindow() {
     if (url.startsWith('http')) { shell.openExternal(url); return { action: 'deny' } }
     return { action: 'allow' }
   })
+
+  // never let the app window navigate away from the bundled page
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== win.webContents.getURL()) {
+      e.preventDefault()
+      if (url.startsWith('http')) shell.openExternal(url)
+    }
+  })
 }
 
 app.whenReady().then(() => {

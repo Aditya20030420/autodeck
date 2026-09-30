@@ -13,8 +13,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import AutoDeckIcon from './AutoDeckIcon.tsx'
-// xlsx / jspdf are lazy-loaded inside the export handlers (see exportExcel/exportPDF)
-// so their weight isn't in the initial bundle.
+// jspdf is lazy-loaded inside exportPDF so its weight isn't in the initial bundle.
+// (Excel export uses dependency-free CSV — see exportCSV.)
 
 /** Time-of-day greeting + matching icon (finer bands than a plain 3-way split). */
 function greeting() {
@@ -465,13 +465,13 @@ export default function TodoApp() {
     download(new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' }), 'json'); done('JSON')
   }, [tasks])
 
-  const exportExcel = useCallback(async () => {
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.json_to_sheet(exportRows())
-    ws['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 10 }, { wch: 9 }, { wch: 9 }, { wch: 40 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Tasks')
-    XLSX.writeFile(wb, `today-todo-${todayStr()}.xlsx`); done('Excel')
+  // CSV opens in Excel/Sheets, needs no dependency (the xlsx lib had unpatched
+  // prototype-pollution/ReDoS advisories, and we only ever export, never parse).
+  const exportCSV = useCallback(() => {
+    const cols = ['Task', 'Priority', 'Category', 'Status', 'Reminder', 'Subtasks']
+    const cell = (v) => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const csv = [cols.join(','), ...exportRows().map((r) => cols.map((c) => cell(r[c])).join(','))].join('\r\n')
+    download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), 'csv'); done('CSV')
   }, [exportRows, tasks])
 
   const exportPDF = useCallback(async () => {
@@ -613,7 +613,7 @@ export default function TodoApp() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
                   <div className="glass animate-fade-up absolute right-0 top-11 z-50 w-40 overflow-hidden rounded-xl p-1 text-sm">
-                    {[['PDF', exportPDF], ['Excel', exportExcel], ['Word', exportWord], ['JSON (backup)', exportJSON]].map(([label, fn]) => (
+                    {[['PDF', exportPDF], ['CSV', exportCSV], ['Word', exportWord], ['JSON (backup)', exportJSON]].map(([label, fn]) => (
                       <button key={label} disabled={tasks.length === 0}
                         onClick={() => { fn(); setExportOpen(false) }}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-medium transition hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/10">
