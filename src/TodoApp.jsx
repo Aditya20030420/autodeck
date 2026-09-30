@@ -4,6 +4,7 @@ import {
   Bell, Sun, Moon, ListTodo, PartyPopper, Inbox, Coffee, CheckCircle2,
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
+  FileText, ClipboardList, Share2, Clipboard, CheckCircle,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -224,6 +225,7 @@ export default function TodoApp() {
     window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [filter, setFilter] = useState('All')
   const [query, setQuery] = useState('')
+  const [view, setView] = useState('tasks')  // 'tasks' | 'report'
   const [notify, setNotify] = useState(
     typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false)
   const [muted, setMuted] = useLocalStorage('todo.muted', false)  // app-level mute (browser can't revoke permission)
@@ -638,6 +640,22 @@ export default function TodoApp() {
           </div>
         </header>
 
+        {/* View tabs: Tasks board vs Daily Report */}
+        <div className="glass mb-6 inline-flex gap-0.5 rounded-full p-1 shadow-sm">
+          {[['tasks', 'Tasks', ListTodo], ['report', 'Daily Report', ClipboardList]].map(([id, label, Icon]) => (
+            <button key={id} onClick={() => setView(id)}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-300 active:scale-[0.97] ${
+                view === id ? 'bg-teal-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
+              }`}>
+              <Icon size={13} strokeWidth={2.2} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {view === 'report' ? (
+          <DailyReport tasks={tasks} onAddGoal={addTask} onToggleGoal={toggle} />
+        ) : (
+        <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
 
         <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} />
@@ -712,6 +730,8 @@ export default function TodoApp() {
             )}
           </Board>
         </div>
+        </>
+        )}
       </div>
 
       {/* Undo toast — restore an accidentally deleted task */}
@@ -736,6 +756,250 @@ export default function TodoApp() {
               OK
             </button>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------- Daily Report ------------------------------ */
+/* Reuses tasks as the day's goals. Reports are stored per-date under
+   "todo.reports" as { blockers, notes, sharedWith, sharedAt, status, snapshot }.
+   Today is always live from current tasks; a saved snapshot lets past days
+   survive the daily reset (which prunes finished old tasks). */
+
+const goalStatus = (g) => {
+  if (g.done) return 'Completed'
+  const subs = g.subtasks || []
+  return subs.length && subs.some((s) => s.done) ? 'In Progress' : 'Pending'
+}
+const fmtDate = (ymd) => new Date(`${ymd}T00:00`).toLocaleDateString(undefined,
+  { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+
+/** Plain-text report in the standard structure — used for copy & download. */
+function formatReport({ date, goals, blockers, notes, sharedWith, status }) {
+  const done = goals.filter((g) => g.done)
+  const remaining = goals.filter((g) => !g.done)
+  const pct = goals.length ? Math.round((done.length / goals.length) * 100) : 0
+  const list = (arr, fn) => (arr.length ? arr.map(fn).join('\n') : '- —')
+  return [
+    `Daily Report — ${fmtDate(date)}`,
+    '',
+    "Today's Goals",
+    list(goals, (g) => `- ${g.text} — ${goalStatus(g)}`),
+    '',
+    'Progress',
+    `- Completed: ${done.length}/${goals.length}`,
+    `- Overall Progress: ${pct}%`,
+    '',
+    'Completed Today',
+    list(done, (g) => `- ${g.text}`),
+    '',
+    'Remaining',
+    list(remaining, (g) => `- ${g.text}`),
+    '',
+    'Challenges / Blockers',
+    blockers.trim() ? blockers.trim() : '- —',
+    '',
+    'Additional Notes',
+    notes.trim() ? notes.trim() : '- —',
+    '',
+    'Shared With',
+    sharedWith.trim() ? `- ${sharedWith.trim()}` : '- —',
+    '',
+    'Report Status',
+    `- ${status}`,
+  ].join('\n')
+}
+
+function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
+  const [reports, setReports] = useLocalStorage('todo.reports', {})
+  const [date, setDate] = useState(todayStr())
+  const [newGoal, setNewGoal] = useState('')
+  const [copied, setCopied] = useState(false)
+  const isToday = date === todayStr()
+
+  const saved = reports[date]
+  // Goals: live for today, otherwise the saved snapshot (empty if none).
+  const goals = isToday ? tasks.filter((x) => x.day === date) : (saved?.snapshot ?? [])
+  const blockers = saved?.blockers ?? ''
+  const notes = saved?.notes ?? ''
+  const sharedWith = saved?.sharedWith ?? ''
+  const status = saved?.status ?? 'Draft'
+
+  const done = goals.filter((g) => g.done).length
+  const pct = goals.length ? Math.round((done / goals.length) * 100) : 0
+
+  // Merge fields into the stored report for the selected date.
+  const patchReport = (fields) => setReports((r) => ({
+    ...r,
+    [date]: {
+      blockers, notes, sharedWith, status,
+      ...r[date],
+      // Snapshot the live goals so past dates survive the daily reset (kept fresh on every save).
+      snapshot: goals.map((g) => ({ id: g.id, text: g.text, done: g.done, priority: g.priority, subtasks: g.subtasks || [] })),
+      ...fields,
+    },
+  }))
+
+  const addGoal = () => {
+    const v = newGoal.trim()
+    if (!v || !isToday) return
+    onAddGoal({ text: v, priority: 'Medium', category: 'Work', reminder: null })
+    setNewGoal('')
+  }
+
+  const report = { date, goals, blockers, notes, sharedWith, status }
+  const text = formatReport(report)
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1800) }
+    catch { /* clipboard blocked — the download button is the fallback */ }
+  }
+  const downloadTxt = () => {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `daily-report-${date}.txt`; a.click()
+    URL.revokeObjectURL(url)
+  }
+  const share = () => { patchReport({ sharedAt: Date.now(), status: 'Finalized' }); copy() }
+
+  const badge = (s) => ({
+    Completed: 'bg-lime-500/15 text-lime-700 dark:text-lime-300',
+    'In Progress': 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+    Pending: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+  }[s])
+
+  const history = Object.entries(reports)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .filter(([d]) => d !== date)
+
+  return (
+    <div className="space-y-5">
+      {/* Date picker + status */}
+      <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] p-4">
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <ClipboardList size={16} className="text-teal-500" />
+          <input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value)}
+            className="glass-sm rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
+        </label>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${status === 'Finalized' ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}`}>
+          {status}{saved?.sharedAt ? ` · shared ${new Date(saved.sharedAt).toLocaleDateString()}` : ''}
+        </span>
+      </div>
+
+      {/* Summary */}
+      <div className="glass grid grid-cols-2 gap-3 rounded-[1.5rem] p-5 sm:grid-cols-4">
+        {[['Goals', goals.length], ['Completed', done], ['Remaining', goals.length - done], ['Progress', `${pct}%`]].map(([k, v]) => (
+          <div key={k} className="text-center">
+            <div className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{v}</div>
+            <div className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{k}</div>
+          </div>
+        ))}
+        <div className="col-span-2 sm:col-span-4">
+          <div className="h-2 overflow-hidden rounded-full bg-slate-500/10">
+            <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-sky-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Goals */}
+      <div className="glass rounded-[1.5rem] p-5">
+        <h3 className="mb-3 text-sm font-bold text-slate-700 dark:text-slate-200">Today's Goals</h3>
+        {isToday && (
+          <div className="mb-3 flex gap-2">
+            <input value={newGoal} onChange={(e) => setNewGoal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addGoal() }}
+              placeholder="Add a goal for today…"
+              className="glass-sm flex-1 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
+            <button onClick={addGoal} className="rounded-full bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-600 active:scale-95">
+              <Plus size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
+        {goals.length === 0 ? (
+          <p className="py-4 text-center text-sm text-slate-400">{isToday ? 'No goals yet. Add one above.' : 'No report saved for this date.'}</p>
+        ) : (
+          <ul className="space-y-2">
+            {goals.map((g) => {
+              const s = goalStatus(g)
+              return (
+                <li key={g.id} className="glass-sm flex items-center gap-3 rounded-xl px-3 py-2.5">
+                  <button onClick={() => isToday && onToggleGoal(g.id)} disabled={!isToday}
+                    title={isToday ? 'Toggle complete' : 'Read-only (past date)'}
+                    className="shrink-0 transition active:scale-90 disabled:cursor-default">
+                    {g.done ? <CheckCircle size={20} className="text-lime-500" /> : <Circle size={20} className="text-slate-300 dark:text-slate-600" />}
+                  </button>
+                  <span className={`flex-1 text-sm ${g.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{g.text}</span>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge(s)}`}>{s}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Blockers & Notes */}
+      <div className="grid gap-5 md:grid-cols-2">
+        {[['Challenges / Blockers', blockers, 'blockers', "What's getting in the way…"],
+          ['Additional Notes', notes, 'notes', 'Anything else worth sharing…']].map(([label, val, key, ph]) => (
+          <div key={key} className="glass rounded-[1.5rem] p-5">
+            <h3 className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">{label}</h3>
+            <textarea value={val} onChange={(e) => patchReport({ [key]: e.target.value })} rows={4} placeholder={ph}
+              className="glass-sm w-full resize-y rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
+          </div>
+        ))}
+      </div>
+
+      {/* Share / finalize */}
+      <div className="glass flex flex-wrap items-end gap-3 rounded-[1.5rem] p-5">
+        <label className="flex-1 min-w-[180px] text-sm">
+          <span className="mb-1 block font-bold text-slate-700 dark:text-slate-200">Share with (manager / senior)</span>
+          <input value={sharedWith} onChange={(e) => patchReport({ sharedWith: e.target.value })}
+            placeholder="e.g. Priya (Engineering Lead)"
+            className="glass-sm w-full rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={copy} className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 active:scale-95 dark:bg-white dark:text-slate-900">
+            {copied ? <CheckCircle size={15} /> : <Clipboard size={15} />} {copied ? 'Copied' : 'Copy report'}
+          </button>
+          <button onClick={downloadTxt} className="flex items-center gap-1.5 rounded-full bg-slate-500/10 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-500/20 active:scale-95 dark:text-slate-200">
+            <Download size={15} /> Download
+          </button>
+          <button onClick={share} disabled={!sharedWith.trim()}
+            className="flex items-center gap-1.5 rounded-full bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-600 active:scale-95 disabled:opacity-40">
+            <Share2 size={15} /> Copy &amp; mark shared
+          </button>
+        </div>
+        <p className="w-full text-xs text-slate-400">
+          Sharing copies the report to your clipboard and marks it Finalized — paste it into email/chat to your manager. (No accounts on this device, so it can't be pushed to someone else automatically.)
+        </p>
+      </div>
+
+      {/* History */}
+      {history.length > 0 && (
+        <div className="glass rounded-[1.5rem] p-5">
+          <h3 className="mb-3 text-sm font-bold text-slate-700 dark:text-slate-200">Previous reports</h3>
+          <ul className="space-y-2">
+            {history.map(([d, r]) => {
+              const g = r.snapshot ?? []
+              const dn = g.filter((x) => x.done).length
+              const p = g.length ? Math.round((dn / g.length) * 100) : 0
+              return (
+                <li key={d}>
+                  <button onClick={() => setDate(d)}
+                    className="glass-sm flex w-full items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-left transition hover:ring-2 hover:ring-teal-500/20">
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{fmtDate(d)}</span>
+                    <span className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      {dn}/{g.length} · {p}%
+                      <span className={`rounded-full px-2 py-0.5 font-bold ${r.status === 'Finalized' ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300' : 'bg-slate-500/10'}`}>{r.status ?? 'Draft'}</span>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
     </div>
