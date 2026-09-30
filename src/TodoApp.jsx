@@ -161,14 +161,27 @@ function reminderLabel(r) {
   const rep = r.repeat ? ` ↻${r.repeat}m` : ''
   return `${datePart}${fmtTime(r.time)}${lead}${rep}`
 }
+/** True while a reminder is snoozed/dismissed (suppressed from banner + alarms). */
+const isSuppressed = (r, now) => !!r.snoozeUntil && r.snoozeUntil > now
+/** When this reminder should next surface (snooze end, else its trigger). */
+const nextReminderAt = (r, now) => (r.snoozeUntil && r.snoozeUntil > now && r.snoozeUntil !== DISMISSED)
+  ? r.snoozeUntil : reminderTrigger(r).getTime()
+/** Minutes a task is past its due (event) time; 0 if not overdue. */
+const overdueMins = (r, now) => Math.max(0, Math.floor((now - reminderEventTime(r).getTime()) / 60000))
+/** Human frequency for the upcoming-reminders table. */
+const freqLabel = (r) => r.repeat ? `Every ${r.repeat} min` : r.lead ? `${r.lead} min before` : 'Once'
+/** Pick the alert sound for a priority level. */
+const prioritySfx = (priority) => (priority === 'High' ? 'alarm' : priority === 'Medium' ? 'reminder' : 'soft')
 
 // --- static config ---
 const PRIORITIES = ['Low', 'Medium', 'High']
 const PRIORITY_RANK = { Low: 0, Medium: 1, High: 2 }
 const CATEGORIES = ['Work', 'Personal', 'Urgent']
-// Reminder dropdown presets: [label, minutes]
-const LEAD_OPTIONS = [['At the time', 0], ['5 min before', 5], ['10 min before', 10], ['15 min before', 15], ['30 min before', 30], ['1 hour before', 60]]
-const REPEAT_OPTIONS = [['Once', 0], ['Every 15 min', 15], ['Every 30 min', 30], ['Every hour', 60]]
+// Reminder dropdown presets: [label, minutes]. 'custom' lets the user type any value.
+const LEAD_OPTIONS = [['At the time', 0], ['5 min before', 5], ['10 min before', 10], ['15 min before', 15], ['30 min before', 30], ['1 hour before', 60], ['2 hours before', 120]]
+const REPEAT_OPTIONS = [['Once', 0], ['Every 5 min', 5], ['Every 10 min', 10], ['Every 15 min', 15], ['Every 30 min', 30], ['Every hour', 60], ['Every 2 hours', 120]]
+const SNOOZE_OPTIONS = [['5 min', 5], ['10 min', 10], ['15 min', 15], ['30 min', 30], ['1 hour', 60]]
+const DISMISSED = 8640000000000000  // sentinel snoozeUntil for a dismissed one-time reminder (effectively "off")
 
 const PRIORITY_BADGE = {
   Low: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -236,6 +249,7 @@ const SFX = {
               [988, 0.95, 0.18, 'square', 0.5], [988, 1.19, 0.18, 'square', 0.5], [1319, 1.47, 0.38, 'square', 0.55]],
   celebrate: [[523, 0, 0.12, 'sine'], [659, 0.11, 0.12, 'sine'], [784, 0.22, 0.12, 'sine'], [1046, 0.33, 0.26, 'sine']], // arpeggio
   toggleOff: [[420, 0, 0.09, 'sine']],                                              // soft un-check
+  soft:      [[660, 0, 0.14, 'sine', 0.18], [880, 0.14, 0.18, 'sine', 0.18]],       // gentle low-priority nudge
 }
 
 let soundEnabled = true  // toggled by the UI sound switch
@@ -274,6 +288,7 @@ export default function TodoApp() {
   const [query, setQuery] = useState('')
   const [view, setView] = useState('tasks')  // 'tasks' | 'report'
   const [nowTick, setNowTick] = useState(() => Date.now())  // drives the live due-reminder banner
+  const [highlightId, setHighlightId] = useState(null)      // task briefly ring-highlighted after "View task"
   const [notify, setNotify] = useState(
     typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false)
   const [muted, setMuted] = useLocalStorage('todo.muted', false)  // app-level mute (browser can't revoke permission)
@@ -359,7 +374,7 @@ export default function TodoApp() {
       if (mutedRef.current) return
       const now = Date.now()
       const due = tasksRef.current.filter((x) =>
-        !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= now)
+        !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= now && !isSuppressed(x.reminder, now))
       // Which due reminders need a (re)alert now, per their repeat cadence.
       const toAlert = due.filter((x) => {
         const la = x.reminder.lastAlert
@@ -369,11 +384,18 @@ export default function TodoApp() {
       if (toAlert.length === 0) return
 
       const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted'
-      // Notify highest-priority first.
+      // Notify highest-priority first; high-priority alerts stay until dismissed.
       ;[...toAlert]
         .sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority])
-        .forEach((x) => { if (canNotify) new Notification(`Reminder · ${x.priority} priority`, { body: x.text, requireInteraction: true }) })
-      playSfx('alarm')
+        .forEach((x) => {
+          if (canNotify) new Notification(`${x.priority === 'High' ? '🔴 ' : ''}Reminder · ${x.priority} priority`, {
+            body: `${x.text}${overdueMins(x.reminder, now) ? ` (overdue ${overdueMins(x.reminder, now)}m)` : ''}`,
+            requireInteraction: x.priority === 'High',
+          })
+        })
+      // One sound per tick, matched to the highest priority alerting now.
+      const topRank = Math.max(...toAlert.map((x) => PRIORITY_RANK[x.priority]))
+      playSfx(prioritySfx(topRank === 2 ? 'High' : topRank === 1 ? 'Medium' : 'Low'))
 
       const ids = new Set(toAlert.map((x) => x.id))
       setTasks((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, reminder: { ...x.reminder, lastAlert: now } } : x)))
@@ -433,13 +455,21 @@ export default function TodoApp() {
       .sort((a, b) => reminderEventTime(a.reminder) - reminderEventTime(b.reminder))[0]
     return up ? reminderLabel(up.reminder) : null
   }, [tasks, nowTick])
-  // Reminders currently due (past trigger, not done) — powers the always-visible
-  // banner, ordered by priority then event time.
+  // Reminders currently due (past trigger, not done, not snoozed) — powers the
+  // always-visible banner, ordered by priority then event time.
   const dueReminders = useMemo(() =>
     tasks
-      .filter((x) => !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= nowTick)
+      .filter((x) => !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= nowTick && !isSuppressed(x.reminder, nowTick))
       .sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] ||
         reminderEventTime(a.reminder) - reminderEventTime(b.reminder)),
+    [tasks, nowTick])
+  // Reminders scheduled but not yet firing (future trigger, or snoozed) — the
+  // "Upcoming reminders" table, ordered by when they'll next surface.
+  const upcoming = useMemo(() =>
+    tasks
+      .filter((x) => !x.done && x.reminder && x.reminder.snoozeUntil !== DISMISSED &&
+        (reminderTrigger(x.reminder).getTime() > nowTick || isSuppressed(x.reminder, nowTick)))
+      .sort((a, b) => nextReminderAt(a.reminder, nowTick) - nextReminderAt(b.reminder, nowTick)),
     [tasks, nowTick])
 
   // --- mutations (memoized; used across many cards) ---
@@ -467,6 +497,23 @@ export default function TodoApp() {
     setEditingId(null)
   }, [patch])
   const togglePin = useCallback((id) => patch(id, (x) => ({ ...x, pinned: !x.pinned })), [patch])
+  // --- reminder actions (banner + card) ---
+  const snoozeReminder = useCallback((id, mins) => patch(id, (x) =>
+    x.reminder ? { ...x, reminder: { ...x.reminder, snoozeUntil: Date.now() + mins * 60000, lastAlert: null } } : x), [patch])
+  // Dismiss the current occurrence: recurring skips to its next interval; one-time turns off.
+  const dismissReminder = useCallback((id) => patch(id, (x) => {
+    if (!x.reminder) return x
+    const until = x.reminder.repeat > 0 ? Date.now() + x.reminder.repeat * 60000 : DISMISSED
+    return { ...x, reminder: { ...x.reminder, snoozeUntil: until } }
+  }), [patch])
+  // Set/replace/clear a task's reminder (re-arms alerts).
+  const editReminder = useCallback((id, reminder) => patch(id, (x) =>
+    ({ ...x, reminder: reminder ? { ...reminder, lastAlert: null, snoozeUntil: null } : null })), [patch])
+  const viewTask = useCallback((id) => {
+    setView('tasks'); setHighlightId(id)
+    setTimeout(() => document.getElementById(`task-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
+    setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 2400)
+  }, [])
   const postpone = useCallback((id) => {
     const d = new Date(); d.setDate(d.getDate() + 1)
     patch(id, (x) => ({
@@ -717,38 +764,11 @@ export default function TodoApp() {
         </header>
 
         {/* Always-visible reminder banner — sticks to the top until every due task
-            is marked done. Ordered by priority. */}
+            is marked done. Ordered by priority, styled by the top priority present. */}
         {dueReminders.length > 0 && (
-          <div className="animate-fade-up sticky top-3 z-30 mb-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 shadow-soft backdrop-blur-md dark:bg-rose-500/[0.12]">
-            <div className="mb-2 flex items-center gap-2 px-1">
-              <Bell size={16} strokeWidth={2.4} className="animate-bell text-rose-500" />
-              <span className="text-sm font-bold text-rose-700 dark:text-rose-300">
-                {dueReminders.length} reminder{dueReminders.length === 1 ? '' : 's'} due
-              </span>
-              {(!notify || muted) && (
-                <span className="ml-auto text-[11px] font-medium text-rose-600/80 dark:text-rose-300/70">
-                  {muted ? 'Sound muted' : 'Enable notifications for desktop alerts'}
-                </span>
-              )}
-            </div>
-            <ul className="space-y-1.5">
-              {dueReminders.map((task) => (
-                <li key={task.id}
-                  className="flex items-center gap-2.5 rounded-xl bg-white/60 px-3 py-2 dark:bg-slate-900/40">
-                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
-                  <span className="hidden shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-500 sm:flex dark:text-slate-400">
-                    <Bell size={10} /> {reminderLabel(task.reminder)}
-                  </span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
-                  <button onClick={() => toggle(task.id)}
-                    className="shrink-0 rounded-full bg-lime-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-lime-600 active:scale-95">
-                    Done
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <ReminderBanner items={dueReminders} nowTick={nowTick}
+            onDone={toggle} onSnooze={snoozeReminder} onDismiss={dismissReminder} onView={viewTask}
+            notify={notify} muted={muted} />
         )}
 
         {/* View tabs: Tasks board vs Daily Report */}
@@ -770,6 +790,8 @@ export default function TodoApp() {
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
 
         <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} />
+
+        {upcoming.length > 0 && <UpcomingReminders items={upcoming} nowTick={nowTick} onView={viewTask} onCancel={(id) => editReminder(id, null)} />}
 
         {/* Search */}
         <div className="relative mb-3">
@@ -815,8 +837,10 @@ export default function TodoApp() {
                   <ul className="space-y-2" aria-label="Pending tasks">
                     {pending.map((task, i) => (
                       <SortableTaskCard key={task.id} task={task} index={i} editing={editingId === task.id}
+                        highlight={highlightId === task.id} nowTick={nowTick}
                         onToggle={toggle} onEdit={setEditingId} onRename={rename}
                         onDelete={remove} onPostpone={postpone} onDuplicate={duplicate} onPin={togglePin}
+                        onEditReminder={editReminder}
                         onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onRemoveSubtask={removeSubtask} />
                     ))}
                   </ul>
@@ -833,8 +857,10 @@ export default function TodoApp() {
               <ul className="space-y-2" aria-label="Completed tasks">
                 {completed.map((task, i) => (
                   <TaskCard key={task.id} task={task} index={i} editing={editingId === task.id}
+                    highlight={highlightId === task.id} nowTick={nowTick}
                     onToggle={toggle} onEdit={setEditingId} onRename={rename}
                     onDelete={remove} onPostpone={postpone} onDuplicate={duplicate} onPin={togglePin}
+                    onEditReminder={editReminder}
                     onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onRemoveSubtask={removeSubtask} />
                 ))}
               </ul>
@@ -1166,16 +1192,64 @@ function ProgressDashboard({ pct, done, total, celebrate }) {
   )
 }
 
+/* ------------------------------ Reminder editor ---------------------------- */
+const REM_CLS = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950/50'
+const inPreset = (opts, v) => opts.some(([, x]) => x === v)
+
+/** Shared reminder configuration row. Emits a reminder object (no lastAlert/snooze)
+    or null via onChange. Used by the add form and the per-task editor. */
+function ReminderEditor({ initial, onChange }) {
+  const [on, setOn] = useState(!!initial)
+  const [date, setDate] = useState(initial?.date || todayStr())
+  const [time, setTime] = useState(initial?.time || '')
+  const [lead, setLead] = useState(initial?.lead || 0)
+  const [repeat, setRepeat] = useState(initial?.repeat || 0)
+  const [leadCustom, setLeadCustom] = useState(!!initial && initial.lead > 0 && !inPreset(LEAD_OPTIONS, initial.lead))
+  const [repeatCustom, setRepeatCustom] = useState(!!initial && initial.repeat > 0 && !inPreset(REPEAT_OPTIONS, initial.repeat))
+
+  useEffect(() => {
+    onChange(on && time ? { date: date || todayStr(), time, lead: +lead || 0, repeat: +repeat || 0 } : null)
+    // onChange is a stable setter; re-emitting only when inputs change is intended.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [on, date, time, lead, repeat])
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <label className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300"
+        title="Alert (in-app banner + sound, plus desktop when allowed) on a date/time">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="accent-sky-600" /> Remind me
+      </label>
+      {on && (
+        <>
+          <input type="date" value={date} min={todayStr()} onChange={(e) => setDate(e.target.value)} aria-label="Reminder date" className={REM_CLS} />
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Reminder time" className={REM_CLS} />
+          <select aria-label="Lead time" title="Alert this long before the time" className={REM_CLS}
+            value={leadCustom ? 'custom' : lead}
+            onChange={(e) => { if (e.target.value === 'custom') setLeadCustom(true); else { setLeadCustom(false); setLead(+e.target.value) } }}>
+            {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+            <option value="custom">Custom…</option>
+          </select>
+          {leadCustom && <input type="number" min="1" value={lead} onChange={(e) => setLead(e.target.value)} aria-label="Custom minutes before" title="Minutes before" className={`${REM_CLS} w-24`} placeholder="min" />}
+          <select aria-label="Repeat interval" title="Repeat until the task is done" className={REM_CLS}
+            value={repeatCustom ? 'custom' : repeat}
+            onChange={(e) => { if (e.target.value === 'custom') setRepeatCustom(true); else { setRepeatCustom(false); setRepeat(+e.target.value) } }}>
+            {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+            <option value="custom">Custom…</option>
+          </select>
+          {repeatCustom && <input type="number" min="1" value={repeat} onChange={(e) => setRepeat(e.target.value)} aria-label="Custom repeat minutes" title="Repeat every N minutes" className={`${REM_CLS} w-24`} placeholder="min" />}
+        </>
+      )}
+    </div>
+  )
+}
+
 /* --------------------------------- Add form -------------------------------- */
 function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
   const [text, setText] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [category, setCategory] = useState('Work')
-  const [remOn, setRemOn] = useState(false)
-  const [remDate, setRemDate] = useState(todayStr())
-  const [remTime, setRemTime] = useState('')
-  const [remLead, setRemLead] = useState(0)
-  const [remRepeat, setRemRepeat] = useState(0)
+  const [rem, setRem] = useState(null)     // reminder object from ReminderEditor
+  const [remKey, setRemKey] = useState(0)  // bump to remount/reset the editor after add
 
   // Live parse of what's typed, so we can preview and use natural-language shortcuts.
   const parsed = text.trim() ? parseQuickAdd(text) : null
@@ -1185,22 +1259,21 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
     e.preventDefault()
     const p = parseQuickAdd(text)
     if (!p.text) return
-    // Manual controls win when set; otherwise fall back to a natural-language time.
-    const time = (remOn && remTime) ? remTime : p.reminder
-    const reminder = time
-      ? { date: (remOn && remDate) ? remDate : todayStr(), time, lead: remOn ? +remLead : 0, repeat: remOn ? +remRepeat : 0, lastAlert: null }
-      : null
+    // Manual editor wins; otherwise fall back to a natural-language time (today, once).
+    const reminder = rem
+      ? { ...rem, lastAlert: null, snoozeUntil: null }
+      : (p.reminder ? { date: todayStr(), time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null)
     onAdd({
       text: p.text,
       priority: p.priority || priority,
       category: p.category || category,
       reminder,
     })
-    setText(''); setRemOn(false); setRemTime(''); setRemDate(todayStr()); setRemLead(0); setRemRepeat(0)
+    setText(''); setRem(null); setRemKey((k) => k + 1)
     if (reminder) onFirstReminder()  // ask for desktop-notification permission (optional bonus)
   }
 
-  const selectCls = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950/50'
+  const selectCls = REM_CLS
 
   return (
     <form onSubmit={submit}
@@ -1229,30 +1302,8 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
         <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" title="Category" className={selectCls}>
           {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
-        <label
-          title="Alert (in-app banner + loud alarm, plus desktop when allowed) on a date/time"
-          className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-          <input type="checkbox" checked={remOn}
-            onChange={(e) => setRemOn(e.target.checked)}
-            className="accent-sky-600" /> Remind me
-        </label>
-        {remOn && (
-          <>
-            <input type="date" value={remDate} min={todayStr()}
-              onChange={(e) => setRemDate(e.target.value)} aria-label="Reminder date"
-              className={selectCls} />
-            <input type="time" value={remTime}
-              onChange={(e) => setRemTime(e.target.value)} aria-label="Reminder time"
-              className={selectCls} />
-            <select value={remLead} onChange={(e) => setRemLead(+e.target.value)} aria-label="Alert lead time" title="Alert before the time" className={selectCls}>
-              {LEAD_OPTIONS.map(([label, v]) => <option key={v} value={v}>{label}</option>)}
-            </select>
-            <select value={remRepeat} onChange={(e) => setRemRepeat(+e.target.value)} aria-label="Repeat interval" title="Repeat until done" className={selectCls}>
-              {REPEAT_OPTIONS.map(([label, v]) => <option key={v} value={v}>{label}</option>)}
-            </select>
-          </>
-        )}
-        {remOn && !notifyOn && (
+        <ReminderEditor key={remKey} initial={null} onChange={setRem} />
+        {rem && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
       </div>
@@ -1292,25 +1343,30 @@ function SortableTaskCard(props) {
     handleProps={{ ...attributes, ...listeners }} />
 }
 
-function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
-  onAddSubtask, onToggleSubtask, onRemoveSubtask, dragRef, dragStyle, handleProps, isDragging }) {
+function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
+  onEditReminder, onAddSubtask, onToggleSubtask, onRemoveSubtask, dragRef, dragStyle, handleProps, isDragging }) {
   const [draft, setDraft] = useState(task.text)
   const [expanded, setExpanded] = useState(false)
   const [subDraft, setSubDraft] = useState('')
+  const [remOpen, setRemOpen] = useState(false)
+  const [remDraft, setRemDraft] = useState(task.reminder || null)
   useEffect(() => { if (editing) setDraft(task.text) }, [editing, task.text])
 
   const subs = task.subtasks || []
   const doneSubs = subs.filter((s) => s.done).length
+  const overdue = task.reminder && !task.done && overdueMins(task.reminder, nowTick) > 0
 
   const addSub = (e) => { e.preventDefault(); onAddSubtask(task.id, subDraft); setSubDraft('') }
+  const saveReminder = () => { onEditReminder(task.id, remDraft); setRemOpen(false) }
 
   return (
     <li
       ref={dragRef}
-      aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${reminderLabel(task.reminder)}.` : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
+      id={`task-${task.id}`}
+      aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${reminderLabel(task.reminder)}.` : ''}${overdue ? ' Overdue.' : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
       style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: CATEGORY_BORDER[task.category] }}
       className={`glass-sm group animate-fade-up rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
-      task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
+      highlight ? 'ring-2 ring-sky-500/70 soft-pulse' : task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
       <div className="flex items-center gap-2">
         {/* drag handle (pending list only) */}
         {handleProps && (
@@ -1373,8 +1429,13 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${CATEGORY_BADGE[task.category]}`}>
           {task.category}
         </span>
+        {overdue && (
+          <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 sm:px-2 sm:text-[11px] dark:text-rose-300">
+            Overdue {overdueMins(task.reminder, nowTick)}m
+          </span>
+        )}
         {task.reminder && (
-          <span className="hidden shrink-0 items-center gap-0.5 text-[11px] text-slate-400 sm:flex"
+          <span className={`hidden shrink-0 items-center gap-0.5 text-[11px] sm:flex ${overdue ? 'text-rose-500' : 'text-slate-400'}`}
             title={`Reminds ${reminderLabel(task.reminder)}`}>
             <Bell size={11} />{reminderLabel(task.reminder)}
           </span>
@@ -1383,6 +1444,9 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
         {/* hover actions */}
         <div className="flex shrink-0 items-center gap-0.5 transition group-hover:opacity-100 focus-within:opacity-100 md:opacity-0">
           <CardAction title="Subtasks" onClick={() => setExpanded((v) => !v)}><ListTodo size={15} /></CardAction>
+          <CardAction title={task.reminder ? 'Edit reminder' : 'Add reminder'} onClick={() => { setRemDraft(task.reminder || null); setRemOpen((v) => !v) }}>
+            <Bell size={15} className={task.reminder ? 'text-sky-500' : ''} />
+          </CardAction>
           <CardAction title="Edit" onClick={() => onEdit(task.id)}><Pencil size={15} /></CardAction>
           <CardAction title={task.pinned ? 'Unpin' : 'Pin to top'} onClick={() => onPin(task.id)}>
             {task.pinned ? <PinOff size={15} /> : <Pin size={15} />}
@@ -1421,7 +1485,152 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
           </form>
         </div>
       )}
+
+      {/* inline reminder editor */}
+      {remOpen && (
+        <div className="mt-2 border-t border-slate-200/60 pt-2.5 pl-7 dark:border-slate-700/60">
+          <ReminderEditor initial={task.reminder} onChange={setRemDraft} />
+          <div className="mt-2 flex items-center gap-2">
+            <button onClick={saveReminder}
+              className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-sky-500 active:scale-95">
+              Save reminder
+            </button>
+            {task.reminder && (
+              <button onClick={() => { onEditReminder(task.id, null); setRemDraft(null); setRemOpen(false) }}
+                className="rounded-full bg-slate-500/10 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-500/20 dark:text-slate-300">
+                Remove
+              </button>
+            )}
+            <button onClick={() => setRemOpen(false)}
+              className="rounded-full px-3 py-1 text-xs font-semibold text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </li>
+  )
+}
+
+/* ----------------------------- Reminder banner ----------------------------- */
+// Per-priority banner styling — High is the most urgent, Low the calmest.
+const PRI_STYLE = {
+  High:   { wrap: 'border-rose-500/40 bg-rose-500/10 dark:bg-rose-500/[0.12]', text: 'text-rose-700 dark:text-rose-300', icon: 'text-rose-500', accent: '#f43f5e' },
+  Medium: { wrap: 'border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/[0.12]', text: 'text-amber-700 dark:text-amber-300', icon: 'text-amber-500', accent: '#f59e0b' },
+  Low:    { wrap: 'border-slate-400/40 bg-slate-500/10 dark:bg-slate-500/[0.12]', text: 'text-slate-700 dark:text-slate-300', icon: 'text-slate-500', accent: '#94a3b8' },
+}
+
+function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, notify, muted }) {
+  const top = items[0].priority             // items are sorted priority-desc
+  const s = PRI_STYLE[top]
+  return (
+    <div className={`animate-fade-up sticky top-3 z-30 mb-6 rounded-2xl border p-3 shadow-soft backdrop-blur-md ${s.wrap}`}>
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <Bell size={16} strokeWidth={2.4} className={`animate-bell ${s.icon}`} />
+        <span className={`text-sm font-bold ${s.text}`}>
+          {items.length} reminder{items.length === 1 ? '' : 's'} due
+        </span>
+        {(!notify || muted) && (
+          <span className="ml-auto text-[11px] font-medium opacity-80">
+            {muted ? 'Sound muted' : 'Enable notifications for desktop alerts'}
+          </span>
+        )}
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((task) => {
+          const od = overdueMins(task.reminder, nowTick)
+          const ps = PRI_STYLE[task.priority]
+          return (
+            <li key={task.id} style={{ borderLeftColor: ps.accent }}
+              className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-xl border-l-[3px] bg-white/60 px-3 py-2 dark:bg-slate-900/40">
+              <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
+              {od > 0 && <span className="shrink-0 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300">OVERDUE {od}m</span>}
+              <span className="hidden shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-500 sm:flex dark:text-slate-400">
+                <Bell size={10} /> {reminderLabel(task.reminder)}
+              </span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
+              <div className="flex shrink-0 items-center gap-1">
+                <button onClick={() => onDone(task.id)} title="Mark completed"
+                  className="rounded-full bg-lime-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-lime-600 active:scale-95">Done</button>
+                <select aria-label="Snooze" title="Snooze" defaultValue=""
+                  onChange={(e) => { if (e.target.value) { onSnooze(task.id, +e.target.value); e.target.value = '' } }}
+                  className="rounded-full bg-slate-500/10 px-2 py-1 text-xs font-semibold text-slate-600 outline-none dark:text-slate-300">
+                  <option value="" disabled>Snooze</option>
+                  {SNOOZE_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <button onClick={() => onView(task.id)} title="View task"
+                  className="rounded-full p-1.5 text-slate-500 transition hover:bg-black/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10"><Search size={13} /></button>
+                <button onClick={() => onDismiss(task.id)} title={task.reminder.repeat ? 'Dismiss (returns next interval)' : 'Dismiss'}
+                  className="rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-rose-500 dark:hover:bg-white/10"><X size={14} /></button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/* --------------------------- Upcoming reminders ---------------------------- */
+function UpcomingReminders({ items, nowTick, onView, onCancel }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="glass mb-5 rounded-[1.5rem] p-4">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2">
+        <Bell size={15} className="text-sky-500" />
+        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Upcoming reminders</span>
+        <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">{items.length}</span>
+        <ChevronDown size={15} className={`ml-auto text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wide text-slate-400">
+                <th className="pb-2 pr-3 font-semibold">Task</th>
+                <th className="pb-2 pr-3 font-semibold">Priority</th>
+                <th className="pb-2 pr-3 font-semibold">Due</th>
+                <th className="pb-2 pr-3 font-semibold">Next</th>
+                <th className="pb-2 pr-3 font-semibold">Frequency</th>
+                <th className="pb-2 pr-3 font-semibold">Status</th>
+                <th className="pb-2 font-semibold"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((task) => {
+                const r = task.reminder
+                const snoozed = isSuppressed(r, nowTick)
+                const overdue = reminderEventTime(r).getTime() < nowTick
+                const status = snoozed ? 'Snoozed' : overdue ? 'Overdue' : 'Pending'
+                const next = new Date(nextReminderAt(r, nowTick))
+                return (
+                  <tr key={task.id} className="border-t border-black/5 dark:border-white/5">
+                    <td className="py-2 pr-3">
+                      <button onClick={() => onView(task.id)} className="max-w-[160px] truncate text-left font-medium text-slate-700 hover:text-sky-600 dark:text-slate-200">{task.text}</button>
+                    </td>
+                    <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span></td>
+                    <td className="py-2 pr-3 tabular-nums text-slate-500 dark:text-slate-400">{r.date === todayStr() ? '' : r.date.slice(5) + ' '}{fmtTime(r.time)}</td>
+                    <td className="py-2 pr-3 tabular-nums text-slate-500 dark:text-slate-400">{fmtTime(`${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`)}</td>
+                    <td className="py-2 pr-3 text-slate-500 dark:text-slate-400">{freqLabel(r)}</td>
+                    <td className="py-2 pr-3">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        status === 'Overdue' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                        : status === 'Snoozed' ? 'bg-slate-500/10 text-slate-500 dark:text-slate-400'
+                        : 'bg-sky-500/10 text-sky-600 dark:text-sky-300'}`}>{status}</span>
+                    </td>
+                    <td className="py-2 text-right">
+                      <button onClick={() => onCancel(task.id)} title="Cancel reminder"
+                        className="rounded-full p-1 text-slate-400 transition hover:text-rose-500"><X size={14} /></button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
