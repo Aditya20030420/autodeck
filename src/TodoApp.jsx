@@ -32,7 +32,7 @@ function greeting() {
    Tasks are one array in localStorage under "todo.tasks".
    task: {
      id, text, priority: 'Low'|'Medium'|'High', category: 'Work'|'Personal'|'Urgent',
-     done, pinned, reminder: 'HH:MM'|null, firedReminder, day: 'YYYY-MM-DD', createdAt
+     done, pinned, reminder: {date,time,lead,repeat,lastAlert}|null, day: 'YYYY-MM-DD', createdAt
    }
    On load we keep today's tasks, roll unfinished older ones forward to today,
    and drop finished old ones (daily reset).
@@ -68,7 +68,9 @@ function normalizeForToday(tasks) {
       subtasks: [],                       // default for tasks saved before subtasks existed
       order: x.order ?? x.createdAt ?? i, // default manual-sort order
       ...x,
-      ...(x.day === t ? {} : { day: t, firedReminder: false }),
+      // Migrate legacy 'HH:MM' string reminders → object; keep future-dated ones as-is.
+      reminder: migrateReminder(x.reminder),
+      ...(x.day === t ? {} : { day: t }),  // roll unfinished tasks forward (reminder keeps its own date)
     }))
 }
 
@@ -122,9 +124,51 @@ function fmtTime(hhmm) {
   return `${h12}:${String(m).padStart(2, '0')} ${ap}`
 }
 
+/* ----------------------------------------------------------------------------
+   REMINDERS
+   task.reminder = null | { date:'YYYY-MM-DD', time:'HH:MM', lead:minutes,
+                            repeat:minutes, lastAlert:epoch|null }
+   - lead:   fire this many minutes BEFORE the event time (0 = at the time).
+   - repeat: re-alert (loud sound + desktop notification) every N minutes until
+             the task is marked done (0 = alert once). The on-page banner stays
+             visible until done regardless of repeat.
+   Old tasks stored reminder as a plain 'HH:MM' string — migrateReminder upgrades
+   those to today's date. ------------------------------------------------------ */
+function migrateReminder(r) {
+  if (!r) return null
+  if (typeof r === 'string') return { date: todayStr(), time: r, lead: 0, repeat: 0, lastAlert: null }
+  return { date: r.date || todayStr(), time: r.time, lead: r.lead || 0, repeat: r.repeat || 0, lastAlert: r.lastAlert ?? null }
+}
+/** The moment a reminder first fires (event time minus lead). */
+function reminderTrigger(r) {
+  const [y, mo, d] = r.date.split('-').map(Number)
+  const [h, m] = r.time.split(':').map(Number)
+  const dt = new Date(y, mo - 1, d, h, m, 0, 0)
+  dt.setMinutes(dt.getMinutes() - (r.lead || 0))
+  return dt
+}
+/** The event moment itself (for sorting/display). */
+function reminderEventTime(r) {
+  const [y, mo, d] = r.date.split('-').map(Number)
+  const [h, m] = r.time.split(':').map(Number)
+  return new Date(y, mo - 1, d, h, m, 0, 0)
+}
+/** Short label: "5:00 PM", with date when not today, plus lead/repeat markers. */
+function reminderLabel(r) {
+  if (!r) return ''
+  const datePart = r.date === todayStr() ? '' : `${r.date.slice(5)} `  // "MM-DD "
+  const lead = r.lead ? ` −${r.lead}m` : ''
+  const rep = r.repeat ? ` ↻${r.repeat}m` : ''
+  return `${datePart}${fmtTime(r.time)}${lead}${rep}`
+}
+
 // --- static config ---
 const PRIORITIES = ['Low', 'Medium', 'High']
+const PRIORITY_RANK = { Low: 0, Medium: 1, High: 2 }
 const CATEGORIES = ['Work', 'Personal', 'Urgent']
+// Reminder dropdown presets: [label, minutes]
+const LEAD_OPTIONS = [['At the time', 0], ['5 min before', 5], ['10 min before', 10], ['15 min before', 15], ['30 min before', 30], ['1 hour before', 60]]
+const REPEAT_OPTIONS = [['Once', 0], ['Every 15 min', 15], ['Every 30 min', 30], ['Every hour', 60]]
 
 const PRIORITY_BADGE = {
   Low: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -187,6 +231,9 @@ const SFX = {
   complete:  [[659, 0, 0.09, 'sine'], [988, 0.08, 0.16, 'sine']],                   // bright rising ding
   delete:    [[320, 0, 0.12, 'triangle'], [180, 0.09, 0.20, 'triangle']],           // low descending thunk
   reminder:  [[880, 0, 0.13, 'sine'], [1174, 0.13, 0.13, 'sine'], [1568, 0.26, 0.22, 'sine']], // 3-note alert
+  // Loud, urgent alarm for due reminders — square waves + higher gain (5th note field).
+  alarm:     [[988, 0, 0.18, 'square', 0.5], [988, 0.24, 0.18, 'square', 0.5], [1319, 0.52, 0.32, 'square', 0.55],
+              [988, 0.95, 0.18, 'square', 0.5], [988, 1.19, 0.18, 'square', 0.5], [1319, 1.47, 0.38, 'square', 0.55]],
   celebrate: [[523, 0, 0.12, 'sine'], [659, 0.11, 0.12, 'sine'], [784, 0.22, 0.12, 'sine'], [1046, 0.33, 0.26, 'sine']], // arpeggio
   toggleOff: [[420, 0, 0.09, 'sine']],                                              // soft un-check
 }
@@ -201,14 +248,14 @@ function playSfx(name) {
     if (!ctx) return
     if (ctx.state === 'suspended') ctx.resume().catch(() => {})
     const now = ctx.currentTime
-    ;(SFX[name] || []).forEach(([freq, offset, dur, type]) => {
+    ;(SFX[name] || []).forEach(([freq, offset, dur, type, peak]) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
       osc.type = type || 'sine'
       osc.frequency.value = freq
       const start = now + offset
       gain.gain.setValueAtTime(0.0001, start)
-      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(peak ?? 0.25, start + 0.02)
       gain.gain.exponentialRampToValueAtTime(0.0001, start + dur)
       osc.connect(gain).connect(ctx.destination)
       osc.start(start)
@@ -226,6 +273,7 @@ export default function TodoApp() {
   const [filter, setFilter] = useState('All')
   const [query, setQuery] = useState('')
   const [view, setView] = useState('tasks')  // 'tasks' | 'report'
+  const [nowTick, setNowTick] = useState(() => Date.now())  // drives the live due-reminder banner
   const [notify, setNotify] = useState(
     typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false)
   const [muted, setMuted] = useLocalStorage('todo.muted', false)  // app-level mute (browser can't revoke permission)
@@ -296,28 +344,39 @@ export default function TodoApp() {
   // Mirror the sound preference to the module flag playSfx reads.
   useEffect(() => { soundEnabled = soundOn }, [soundOn])
 
-  // --- reminders: check every 20s. Always alert in-app (toast + chime); also
-  //     fire a desktop notification when the browser permits it. Muting silences both.
+  // --- reminders: check every 20s. A reminder is "due" once now passes its
+  //     trigger (event time − lead) and stays due until the task is marked done.
+  //     On becoming due we sound a loud alarm + desktop notification, then re-nag
+  //     every `repeat` minutes (0 = once). The always-visible banner (below) keeps
+  //     showing due reminders regardless. Muting silences the sound + notifications.
   const mutedRef = useRef(muted)
   mutedRef.current = muted
   const tasksRef = useRef(tasks)
   tasksRef.current = tasks
   useEffect(() => {
     const check = () => {
+      setNowTick(Date.now())  // keep the due-banner fresh even when muted
       if (mutedRef.current) return
-      const hhmm = new Date().toTimeString().slice(0, 5)
-      const t = todayStr()
+      const now = Date.now()
       const due = tasksRef.current.filter((x) =>
-        x.day === t && !x.done && x.reminder && !x.firedReminder && x.reminder <= hhmm)
-      if (due.length === 0) return
+        !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= now)
+      // Which due reminders need a (re)alert now, per their repeat cadence.
+      const toAlert = due.filter((x) => {
+        const la = x.reminder.lastAlert
+        if (!la) return true
+        return x.reminder.repeat > 0 && now - la >= x.reminder.repeat * 60000
+      })
+      if (toAlert.length === 0) return
 
       const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted'
-      due.forEach((x) => { if (canNotify) new Notification('Task reminder', { body: x.text }) })
-      playSfx('reminder')
-      setNotice({ sticky: true, text: due.length === 1 ? `Reminder: ${due[0].text}` : `${due.length} reminders due now` })
+      // Notify highest-priority first.
+      ;[...toAlert]
+        .sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority])
+        .forEach((x) => { if (canNotify) new Notification(`Reminder · ${x.priority} priority`, { body: x.text, requireInteraction: true }) })
+      playSfx('alarm')
 
-      const ids = new Set(due.map((x) => x.id))
-      setTasks((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, firedReminder: true } : x)))
+      const ids = new Set(toAlert.map((x) => x.id))
+      setTasks((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, reminder: { ...x.reminder, lastAlert: now } } : x)))
     }
     check()
     const id = setInterval(check, 20000)
@@ -367,9 +426,21 @@ export default function TodoApp() {
   const pending = visible.filter((x) => !x.done)
   const completed = visible.filter((x) => x.done)
   const highPending = todays.filter((x) => !x.done && x.priority === 'High').length
-  const nextReminder = todays
-    .filter((x) => !x.done && x.reminder)
-    .map((x) => x.reminder).sort()[0]
+  // Next upcoming reminder (across all pending tasks, any date) for the header chip.
+  const nextReminder = useMemo(() => {
+    const up = tasks
+      .filter((x) => !x.done && x.reminder && reminderEventTime(x.reminder).getTime() >= Date.now())
+      .sort((a, b) => reminderEventTime(a.reminder) - reminderEventTime(b.reminder))[0]
+    return up ? reminderLabel(up.reminder) : null
+  }, [tasks, nowTick])
+  // Reminders currently due (past trigger, not done) — powers the always-visible
+  // banner, ordered by priority then event time.
+  const dueReminders = useMemo(() =>
+    tasks
+      .filter((x) => !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= nowTick)
+      .sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] ||
+        reminderEventTime(a.reminder) - reminderEventTime(b.reminder)),
+    [tasks, nowTick])
 
   // --- mutations (memoized; used across many cards) ---
   const patch = useCallback((id, fn) =>
@@ -398,12 +469,17 @@ export default function TodoApp() {
   const togglePin = useCallback((id) => patch(id, (x) => ({ ...x, pinned: !x.pinned })), [patch])
   const postpone = useCallback((id) => {
     const d = new Date(); d.setDate(d.getDate() + 1)
-    patch(id, (x) => ({ ...x, day: dateStr(d), firedReminder: false, done: false }))
+    patch(id, (x) => ({
+      ...x, day: dateStr(d), done: false,
+      // Shift a same-day reminder to tomorrow too, and re-arm it.
+      reminder: x.reminder ? { ...x.reminder, date: dateStr(d), lastAlert: null } : null,
+    }))
   }, [patch])
   const duplicate = useCallback((id) => setTasks((prev) => {
     const src = prev.find((x) => x.id === id)
     if (!src) return prev
-    return [...prev, { ...src, id: crypto.randomUUID(), done: false, pinned: false, order: Date.now(), createdAt: Date.now() }]
+    return [...prev, { ...src, id: crypto.randomUUID(), done: false, pinned: false, order: Date.now(), createdAt: Date.now(),
+      reminder: src.reminder ? { ...src.reminder, lastAlert: null } : null }]
   }), [setTasks])
 
   const addTask = useCallback((data) => {
@@ -411,7 +487,7 @@ export default function TodoApp() {
     setTasks((prev) => [...prev, {
       id: crypto.randomUUID(),
       text: data.text, priority: data.priority, category: data.category,
-      reminder: data.reminder || null, firedReminder: false,
+      reminder: data.reminder || null,
       done: false, pinned: false, day: todayStr(), createdAt: Date.now(),
       order: Date.now(), subtasks: [],
     }])
@@ -451,7 +527,7 @@ export default function TodoApp() {
     Priority: t.priority,
     Category: t.category,
     Status: t.done ? 'Done' : 'Pending',
-    Reminder: t.reminder || '',
+    Reminder: t.reminder ? `${t.reminder.date} ${t.reminder.time}${t.reminder.lead ? ` (-${t.reminder.lead}m)` : ''}${t.reminder.repeat ? ` /${t.reminder.repeat}m` : ''}` : '',
     Subtasks: (t.subtasks || []).map((s) => `${s.done ? '[x]' : '[ ]'} ${s.text}`).join('; '),
   })), [tasks])
 
@@ -639,6 +715,41 @@ export default function TodoApp() {
             </IconButton>
           </div>
         </header>
+
+        {/* Always-visible reminder banner — sticks to the top until every due task
+            is marked done. Ordered by priority. */}
+        {dueReminders.length > 0 && (
+          <div className="animate-fade-up sticky top-3 z-30 mb-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 shadow-soft backdrop-blur-md dark:bg-rose-500/[0.12]">
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <Bell size={16} strokeWidth={2.4} className="animate-bell text-rose-500" />
+              <span className="text-sm font-bold text-rose-700 dark:text-rose-300">
+                {dueReminders.length} reminder{dueReminders.length === 1 ? '' : 's'} due
+              </span>
+              {(!notify || muted) && (
+                <span className="ml-auto text-[11px] font-medium text-rose-600/80 dark:text-rose-300/70">
+                  {muted ? 'Sound muted' : 'Enable notifications for desktop alerts'}
+                </span>
+              )}
+            </div>
+            <ul className="space-y-1.5">
+              {dueReminders.map((task) => (
+                <li key={task.id}
+                  className="flex items-center gap-2.5 rounded-xl bg-white/60 px-3 py-2 dark:bg-slate-900/40">
+                  <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
+                  <span className="hidden shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-500 sm:flex dark:text-slate-400">
+                    <Bell size={10} /> {reminderLabel(task.reminder)}
+                  </span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
+                  <button onClick={() => toggle(task.id)}
+                    className="shrink-0 rounded-full bg-lime-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-lime-600 active:scale-95">
+                    Done
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* View tabs: Tasks board vs Daily Report */}
         <div className="glass mb-6 inline-flex gap-0.5 rounded-full p-1 shadow-sm">
@@ -1061,7 +1172,10 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
   const [priority, setPriority] = useState('Medium')
   const [category, setCategory] = useState('Work')
   const [remOn, setRemOn] = useState(false)
+  const [remDate, setRemDate] = useState(todayStr())
   const [remTime, setRemTime] = useState('')
+  const [remLead, setRemLead] = useState(0)
+  const [remRepeat, setRemRepeat] = useState(0)
 
   // Live parse of what's typed, so we can preview and use natural-language shortcuts.
   const parsed = text.trim() ? parseQuickAdd(text) : null
@@ -1071,14 +1185,18 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
     e.preventDefault()
     const p = parseQuickAdd(text)
     if (!p.text) return
-    const reminder = p.reminder || (remOn && remTime ? remTime : null)
+    // Manual controls win when set; otherwise fall back to a natural-language time.
+    const time = (remOn && remTime) ? remTime : p.reminder
+    const reminder = time
+      ? { date: (remOn && remDate) ? remDate : todayStr(), time, lead: remOn ? +remLead : 0, repeat: remOn ? +remRepeat : 0, lastAlert: null }
+      : null
     onAdd({
       text: p.text,
       priority: p.priority || priority,
       category: p.category || category,
       reminder,
     })
-    setText(''); setRemOn(false); setRemTime('')
+    setText(''); setRemOn(false); setRemTime(''); setRemDate(todayStr()); setRemLead(0); setRemRepeat(0)
     if (reminder) onFirstReminder()  // ask for desktop-notification permission (optional bonus)
   }
 
@@ -1112,15 +1230,28 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
           {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
         <label
-          title="Alert (in-app, plus desktop when allowed) at a set time"
+          title="Alert (in-app banner + loud alarm, plus desktop when allowed) on a date/time"
           className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
           <input type="checkbox" checked={remOn}
             onChange={(e) => setRemOn(e.target.checked)}
-            className="accent-sky-600" /> Remind me at
+            className="accent-sky-600" /> Remind me
         </label>
-        <input type="time" value={remTime} disabled={!remOn}
-          onChange={(e) => setRemTime(e.target.value)}
-          className={`${selectCls} disabled:opacity-40`} />
+        {remOn && (
+          <>
+            <input type="date" value={remDate} min={todayStr()}
+              onChange={(e) => setRemDate(e.target.value)} aria-label="Reminder date"
+              className={selectCls} />
+            <input type="time" value={remTime}
+              onChange={(e) => setRemTime(e.target.value)} aria-label="Reminder time"
+              className={selectCls} />
+            <select value={remLead} onChange={(e) => setRemLead(+e.target.value)} aria-label="Alert lead time" title="Alert before the time" className={selectCls}>
+              {LEAD_OPTIONS.map(([label, v]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+            <select value={remRepeat} onChange={(e) => setRemRepeat(+e.target.value)} aria-label="Repeat interval" title="Repeat until done" className={selectCls}>
+              {REPEAT_OPTIONS.map(([label, v]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+          </>
+        )}
         {remOn && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
@@ -1176,7 +1307,7 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
   return (
     <li
       ref={dragRef}
-      aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${task.reminder}.` : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
+      aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${reminderLabel(task.reminder)}.` : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
       style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: CATEGORY_BORDER[task.category] }}
       className={`glass-sm group animate-fade-up rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
       task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
@@ -1243,8 +1374,9 @@ function TaskCard({ task, index = 0, editing, onToggle, onEdit, onRename, onDele
           {task.category}
         </span>
         {task.reminder && (
-          <span className="hidden shrink-0 items-center gap-0.5 text-[11px] text-slate-400 sm:flex">
-            <Bell size={11} />{task.reminder}
+          <span className="hidden shrink-0 items-center gap-0.5 text-[11px] text-slate-400 sm:flex"
+            title={`Reminds ${reminderLabel(task.reminder)}`}>
+            <Bell size={11} />{reminderLabel(task.reminder)}
           </span>
         )}
 
