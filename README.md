@@ -16,7 +16,7 @@
 ## Get it
 
 - **Web** — open the [live demo](https://aditya20030420.github.io/autodeck/) (works on any device; installable soon).
-- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.1.exe`** (installer, adds a Start Menu shortcut) or **`AutoDeck-Portable.exe`** (no install). Or build it yourself: `npm run electron:build`.
+- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.2.exe`** (installer, adds a Start Menu shortcut) or **`AutoDeck-Portable.exe`** (no install). Or build it yourself: `npm run electron:build`.
 
 ---
 
@@ -28,7 +28,7 @@
 - **Two boards** — Pending & Completed side by side, each accent-colored (teal / lime).
 - **Rich tasks** — priority, category, reminders, **subtasks** (with per-task progress), pin, postpone, duplicate, inline edit.
 - **Drag-and-drop reordering** (via `@dnd-kit`), live search, and icon-labeled filters (All / Active / Completed / High Priority / Work / Personal).
-- **Reminders** — in-app sticky toast + chime that work with the tab open, plus desktop **browser notifications** when allowed. Mutable.
+- **Reminder assistant** — schedule reminders by date + time with a **lead** (5/10/15/30 min, 1–2 h, or custom before) and **repeat until done** (every 5–120 min or custom). An always-visible dashboard banner lists what's due, **ordered and styled by priority** (High/Medium/Low), with a matching loud→soft alarm and desktop **browser notifications** (high-priority ones stay until dismissed). Per-reminder **Mark Done / Snooze / Dismiss / View task**, an **Overdue** indicator, and an **Upcoming reminders** table. Fires while the tab is open; mutable. *(No push server, so it can't alert when the browser is fully closed.)*
 - **Per-event sound effects** (Web Audio) with a global on/off toggle.
 - **Progress dashboard** — gradient progress ring (glows & pulses at 100%), header stat chips, and a time-of-day greeting with a live clock.
 - **Export / Import** — download tasks as **PDF, CSV, Word (.doc), or JSON**; restore from a JSON backup.
