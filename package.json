@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:build": "node scripts/gen-icon.mjs && vite build && electron-builder --win --publish never"
+    "electron:build": "vite build && electron-builder --win --publish never",
+    "gen-icon": "node scripts/gen-icon.mjs"
   },
   "build": {
     "appId": "com.autodeck.app",
@@ -57,8 +58,6 @@
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
-    "png-to-ico": "^3.0.2",
-    "sharp": "^0.35.5",
     "tailwindcss": "^4.0.0",
     "vite": "^6.0.7"
   }
