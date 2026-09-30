@@ -16,7 +16,7 @@
 ## Get it
 
 - **Web** — open the [live demo](https://aditya20030420.github.io/autodeck/) (works on any device; installable soon).
-- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.2.exe`** (installer, adds a Start Menu shortcut) or **`AutoDeck-Portable.exe`** (no install). Or build it yourself: `npm run electron:build`.
+- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.3.exe`** (installer, adds a Start Menu shortcut) or **`AutoDeck-Portable.exe`** (no install). Or build it yourself: `npm run electron:build`.
 
 ---
 
