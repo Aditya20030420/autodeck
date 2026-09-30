@@ -4,7 +4,7 @@ import {
   Bell, Sun, Moon, ListTodo, PartyPopper, Inbox, Coffee, CheckCircle2,
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
-  FileText, ClipboardList, Share2, Clipboard, CheckCircle,
+  FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -253,10 +253,12 @@ const SFX = {
 }
 
 let soundEnabled = true  // toggled by the UI sound switch
+let sfxVolume = 0.8      // 0–1 master volume (Settings)
+let hpAlarmOn = true     // use the loud alarm for high-priority reminders (Settings)
 
 /** Play a named sound effect via the Web Audio API (no audio files). */
 function playSfx(name) {
-  if (!soundEnabled) return
+  if (!soundEnabled || sfxVolume <= 0) return
   try {
     const ctx = getAudioCtx()
     if (!ctx) return
@@ -269,7 +271,7 @@ function playSfx(name) {
       osc.frequency.value = freq
       const start = now + offset
       gain.gain.setValueAtTime(0.0001, start)
-      gain.gain.exponentialRampToValueAtTime(peak ?? 0.25, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, (peak ?? 0.25) * sfxVolume), start + 0.02)
       gain.gain.exponentialRampToValueAtTime(0.0001, start + dur)
       osc.connect(gain).connect(ctx.destination)
       osc.start(start)
@@ -293,6 +295,10 @@ export default function TodoApp() {
     typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false)
   const [muted, setMuted] = useLocalStorage('todo.muted', false)  // app-level mute (browser can't revoke permission)
   const [soundOn, setSoundOn] = useLocalStorage('todo.sound', true)  // UI sound effects on/off
+  const [volume, setVolume] = useLocalStorage('todo.volume', 0.8)    // master sound volume 0–1
+  const [hpAlarm, setHpAlarm] = useLocalStorage('todo.hpAlarm', true) // loud alarm for high-priority reminders
+  const [remDefaults, setRemDefaults] = useLocalStorage('todo.remDefaults', { lead: 0, repeat: 0 })
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [celebrate, setCelebrate] = useState(false)
   const [undo, setUndo] = useState(null)  // last deleted task, for the undo toast
@@ -356,8 +362,10 @@ export default function TodoApp() {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
-  // Mirror the sound preference to the module flag playSfx reads.
+  // Mirror sound preferences to the module flags playSfx reads.
   useEffect(() => { soundEnabled = soundOn }, [soundOn])
+  useEffect(() => { sfxVolume = volume }, [volume])
+  useEffect(() => { hpAlarmOn = hpAlarm }, [hpAlarm])
 
   // --- reminders: check every 20s. A reminder is "due" once now passes its
   //     trigger (event time − lead) and stays due until the task is marked done.
@@ -395,7 +403,8 @@ export default function TodoApp() {
         })
       // One sound per tick, matched to the highest priority alerting now.
       const topRank = Math.max(...toAlert.map((x) => PRIORITY_RANK[x.priority]))
-      playSfx(prioritySfx(topRank === 2 ? 'High' : topRank === 1 ? 'Medium' : 'Low'))
+      const level = topRank === 2 ? 'High' : topRank === 1 ? 'Medium' : 'Low'
+      playSfx(level === 'High' && !hpAlarmOn ? 'reminder' : prioritySfx(level))
 
       const ids = new Set(toAlert.map((x) => x.id))
       setTasks((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, reminder: { ...x.reminder, lastAlert: now } } : x)))
@@ -756,12 +765,25 @@ export default function TodoApp() {
             <input ref={fileRef} type="file" accept="application/json,.json" className="hidden"
               onChange={(e) => { if (e.target.files[0]) importTasks(e.target.files[0]); e.target.value = '' }} />
             <span className="mx-1 h-4 w-px bg-black/[0.07] dark:bg-white/[0.08]" />
+            <IconButton title="Settings" onClick={() => setSettingsOpen(true)} active={settingsOpen}
+              className="hover:[&_svg]:rotate-45">
+              <Settings size={18} />
+            </IconButton>
             <IconButton title="Toggle theme" onClick={() => setDark((d) => !d)}
               className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
               <ThemeIcon dark={dark} size={18} />
             </IconButton>
           </div>
         </header>
+
+        {settingsOpen && (
+          <SettingsPanel onClose={() => setSettingsOpen(false)}
+            soundOn={soundOn} setSoundOn={setSoundOn}
+            volume={volume} setVolume={setVolume}
+            hpAlarm={hpAlarm} setHpAlarm={setHpAlarm}
+            remDefaults={remDefaults} setRemDefaults={setRemDefaults}
+            notify={notify} muted={muted} onRequestNotify={requestNotify} />
+        )}
 
         {/* Always-visible reminder banner — sticks to the top until every due task
             is marked done. Ordered by priority, styled by the top priority present. */}
@@ -789,7 +811,7 @@ export default function TodoApp() {
         <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
 
-        <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} />
+        <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} remDefaults={remDefaults} />
 
         {upcoming.length > 0 && <UpcomingReminders items={upcoming} nowTick={nowTick} onView={viewTask} onCancel={(id) => editReminder(id, null)} />}
 
@@ -1198,12 +1220,12 @@ const inPreset = (opts, v) => opts.some(([, x]) => x === v)
 
 /** Shared reminder configuration row. Emits a reminder object (no lastAlert/snooze)
     or null via onChange. Used by the add form and the per-task editor. */
-function ReminderEditor({ initial, onChange }) {
+function ReminderEditor({ initial, onChange, defaults }) {
   const [on, setOn] = useState(!!initial)
   const [date, setDate] = useState(initial?.date || todayStr())
   const [time, setTime] = useState(initial?.time || '')
-  const [lead, setLead] = useState(initial?.lead || 0)
-  const [repeat, setRepeat] = useState(initial?.repeat || 0)
+  const [lead, setLead] = useState(initial?.lead ?? defaults?.lead ?? 0)
+  const [repeat, setRepeat] = useState(initial?.repeat ?? defaults?.repeat ?? 0)
   const [leadCustom, setLeadCustom] = useState(!!initial && initial.lead > 0 && !inPreset(LEAD_OPTIONS, initial.lead))
   const [repeatCustom, setRepeatCustom] = useState(!!initial && initial.repeat > 0 && !inPreset(REPEAT_OPTIONS, initial.repeat))
 
@@ -1244,7 +1266,7 @@ function ReminderEditor({ initial, onChange }) {
 }
 
 /* --------------------------------- Add form -------------------------------- */
-function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
+function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults }) {
   const [text, setText] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [category, setCategory] = useState('Work')
@@ -1302,7 +1324,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn }) {
         <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" title="Category" className={selectCls}>
           {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
         </select>
-        <ReminderEditor key={remKey} initial={null} onChange={setRem} />
+        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} />
         {rem && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
@@ -1630,6 +1652,113 @@ function UpcomingReminders({ items, nowTick, onView, onCancel }) {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ------------------------------ Settings panel ----------------------------- */
+function Switch({ checked, onChange, label }) {
+  return (
+    <button role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  )
+}
+
+function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, notify, muted, onRequestNotify }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const sel = 'rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50'
+  const notifState = notify ? (muted ? 'Muted' : 'On') : 'Off'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div role="dialog" aria-label="Settings"
+        className="glass animate-fade-up relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-[1.5rem] p-6 shadow-soft">
+        <div className="mb-4 flex items-center gap-2">
+          <Settings size={18} className="text-teal-500" />
+          <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Reminder & notification settings</h2>
+          <button onClick={onClose} aria-label="Close settings" className="ml-auto rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-700 dark:hover:bg-white/10"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-4 text-sm">
+          {/* Desktop notifications */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-slate-700 dark:text-slate-200">Desktop notifications</div>
+              <div className="text-xs text-slate-400">Currently: {notifState}</div>
+            </div>
+            <button onClick={onRequestNotify}
+              className="rounded-full bg-slate-500/10 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 dark:text-slate-200">
+              {!notify ? 'Enable' : muted ? 'Unmute' : 'Mute'}
+            </button>
+          </div>
+
+          {/* Sound on/off */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-slate-700 dark:text-slate-200">Sound effects</div>
+              <div className="text-xs text-slate-400">Alarms and UI chimes</div>
+            </div>
+            <Switch checked={soundOn} onChange={setSoundOn} label="Sound effects" />
+          </div>
+
+          {/* Volume */}
+          <div className={soundOn ? '' : 'pointer-events-none opacity-40'}>
+            <div className="mb-1.5 flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
+              <Volume2 size={15} /> Volume
+              <span className="ml-auto text-xs font-normal text-slate-400">{Math.round(volume * 100)}%</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <input type="range" min="0" max="100" value={Math.round(volume * 100)}
+                onChange={(e) => setVolume(+e.target.value / 100)}
+                className="w-full accent-teal-500" aria-label="Volume" />
+              <button onClick={() => playSfx('reminder')}
+                className="shrink-0 rounded-full bg-slate-500/10 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 dark:text-slate-200">Test</button>
+            </div>
+          </div>
+
+          {/* High-priority alarm */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-slate-700 dark:text-slate-200">Louder alarm for high priority</div>
+              <div className="text-xs text-slate-400">Off = high priority uses the standard chime</div>
+            </div>
+            <Switch checked={hpAlarm} onChange={setHpAlarm} label="Louder alarm for high priority" />
+          </div>
+
+          {/* Default reminder times */}
+          <div className="border-t border-black/5 pt-4 dark:border-white/10">
+            <div className="mb-2 font-semibold text-slate-700 dark:text-slate-200">Defaults for new reminders</div>
+            <div className="flex flex-wrap gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                Lead
+                <select className={sel} value={remDefaults.lead}
+                  onChange={(e) => setRemDefaults({ ...remDefaults, lead: +e.target.value })}>
+                  {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                Repeat
+                <select className={sel} value={remDefaults.repeat}
+                  onChange={(e) => setRemDefaults({ ...remDefaults, repeat: +e.target.value })}>
+                  {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">Pre-fills the reminder fields when you add a task.</p>
+          </div>
+
+          <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10">
+            Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
