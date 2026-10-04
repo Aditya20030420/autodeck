@@ -307,6 +307,7 @@ export default function TodoApp() {
   const [notice, setNotice] = useState(null)  // transient status message toast
   const prevAllDone = useRef(false)
   const fileRef = useRef(null)  // hidden import file input
+  const swRegRef = useRef(null) // service-worker registration (for actionable notifications)
   const [exportOpen, setExportOpen] = useState(false)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -395,13 +396,29 @@ export default function TodoApp() {
 
       const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted'
       // Notify highest-priority first; high-priority alerts stay until dismissed.
+      // Via the service worker (when registered) the notification carries action
+      // buttons and click-routing; otherwise fall back to a plain Notification.
       ;[...toAlert]
         .sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority])
         .forEach((x) => {
-          if (canNotify) new Notification(`${x.priority === 'High' ? '🔴 ' : ''}Reminder · ${x.priority} priority`, {
-            body: `${x.text}${overdueMins(x.reminder, now) ? ` (overdue ${overdueMins(x.reminder, now)}m)` : ''}`,
-            requireInteraction: x.priority === 'High',
-          })
+          if (!canNotify) return
+          const od = overdueMins(x.reminder, now)
+          const title = `${x.priority === 'High' ? '🔴 ' : ''}Reminder · ${x.priority} priority`
+          const opts = {
+            body: `${x.text}${od ? ` (overdue ${fmtDur(od)})` : ''}`,
+            tag: x.id, renotify: true, requireInteraction: x.priority === 'High',
+            data: { taskId: x.id, url: location.href },
+          }
+          const reg = swRegRef.current
+          if (reg && reg.showNotification) {
+            reg.showNotification(title, { ...opts, actions: [
+              { action: 'done', title: '✓ Done' },
+              { action: 'snooze', title: '💤 Snooze 10m' },
+              { action: 'view', title: 'View' },
+            ] })
+          } else {
+            new Notification(title, opts)
+          }
         })
       // One sound per tick, matched to the highest priority alerting now.
       const topRank = Math.max(...toAlert.map((x) => PRIORITY_RANK[x.priority]))
@@ -525,6 +542,25 @@ export default function TodoApp() {
     setTimeout(() => document.getElementById(`task-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
     setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 2400)
   }, [])
+
+  // Register the service worker (skipped on file:// — the desktop build falls
+  // back to plain Notifications) and route notification-action clicks back here.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:') return
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`)
+      .then((reg) => { swRegRef.current = reg })
+      .catch(() => {})
+    const onMsg = (e) => {
+      const m = e.data
+      if (!m || m.type !== 'reminder-action') return
+      if (m.action === 'done') toggle(m.taskId)
+      else if (m.action === 'snooze') snoozeReminder(m.taskId, 10)
+      else viewTask(m.taskId)
+    }
+    navigator.serviceWorker.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg)
+  }, [toggle, snoozeReminder, viewTask])
+
   const postpone = useCallback((id) => {
     const d = new Date(); d.setDate(d.getDate() + 1)
     patch(id, (x) => ({
