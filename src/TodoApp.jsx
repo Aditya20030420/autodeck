@@ -168,6 +168,8 @@ const nextReminderAt = (r, now) => (r.snoozeUntil && r.snoozeUntil > now && r.sn
   ? r.snoozeUntil : reminderTrigger(r).getTime()
 /** Minutes a task is past its due (event) time; 0 if not overdue. */
 const overdueMins = (r, now) => Math.max(0, Math.floor((now - reminderEventTime(r).getTime()) / 60000))
+/** Compact duration: 45m · 3h · 2d (keeps badges short). */
+const fmtDur = (m) => (m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`)
 /** Human frequency for the upcoming-reminders table. */
 const freqLabel = (r) => r.repeat ? `Every ${r.repeat} min` : r.lead ? `${r.lead} min before` : 'Once'
 /** Pick the alert sound for a priority level. */
@@ -1444,27 +1446,8 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), o
           </button>
         )}
 
-        {/* badges — shown on all sizes now (priority/category visible on mobile too) */}
-        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${PRIORITY_BADGE[task.priority]}`}>
-          {task.priority}
-        </span>
-        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${CATEGORY_BADGE[task.category]}`}>
-          {task.category}
-        </span>
-        {overdue && (
-          <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 sm:px-2 sm:text-[11px] dark:text-rose-300">
-            Overdue {overdueMins(task.reminder, nowTick)}m
-          </span>
-        )}
-        {task.reminder && (
-          <span className={`hidden shrink-0 items-center gap-0.5 text-[11px] sm:flex ${overdue ? 'text-rose-500' : 'text-slate-400'}`}
-            title={`Reminds ${reminderLabel(task.reminder)}`}>
-            <Bell size={11} />{reminderLabel(task.reminder)}
-          </span>
-        )}
-
         {/* hover actions */}
-        <div className="flex shrink-0 items-center gap-0.5 transition group-hover:opacity-100 focus-within:opacity-100 md:opacity-0">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 transition group-hover:opacity-100 focus-within:opacity-100 md:opacity-0">
           <CardAction title="Subtasks" onClick={() => setExpanded((v) => !v)}><ListTodo size={15} /></CardAction>
           <CardAction title={task.reminder ? 'Edit reminder' : 'Add reminder'} onClick={() => { setRemDraft(task.reminder || null); setRemOpen((v) => !v) }}>
             <Bell size={15} className={task.reminder ? 'text-sky-500' : ''} />
@@ -1477,6 +1460,23 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), o
           <CardAction title="Duplicate" onClick={() => onDuplicate(task.id)}><Copy size={15} /></CardAction>
           <CardAction title="Delete" onClick={() => onDelete(task.id)} danger><Trash2 size={15} /></CardAction>
         </div>
+      </div>
+
+      {/* badges row — wraps under the title so it never crowds the task text */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${CATEGORY_BADGE[task.category]}`}>{task.category}</span>
+        {overdue && (
+          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 sm:text-[11px] dark:text-rose-300">
+            Overdue {fmtDur(overdueMins(task.reminder, nowTick))}
+          </span>
+        )}
+        {task.reminder && (
+          <span className={`flex items-center gap-0.5 text-[11px] ${overdue ? 'text-rose-500' : 'text-slate-400'}`}
+            title={`Reminds ${reminderLabel(task.reminder)}`}>
+            <Bell size={11} />{reminderLabel(task.reminder)}
+          </span>
+        )}
       </div>
 
       {/* subtask checklist */}
@@ -1567,7 +1567,7 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, n
               className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-xl border-l-[3px] bg-white/60 px-3 py-2 dark:bg-slate-900/40">
               <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
-              {od > 0 && <span className="shrink-0 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300">OVERDUE {od}m</span>}
+              {od > 0 && <span className="shrink-0 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300">OVERDUE {fmtDur(od)}</span>}
               <span className="hidden shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-500 sm:flex dark:text-slate-400">
                 <Bell size={10} /> {reminderLabel(task.reminder)}
               </span>
