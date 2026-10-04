@@ -16,7 +16,7 @@
 ## Get it
 
 - **Web** — open the [live demo](https://aditya20030420.github.io/autodeck/) (works on any device; installable soon).
-- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.5.exe`** (installer, adds a Start Menu shortcut) or **`AutoDeck-Portable.exe`** (no install). Or build it yourself: `npm run electron:build`.
+- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.6.exe`** (installer, adds a Start Menu shortcut) or **`AutoDeck-Portable.exe`** (no install). Or build it yourself: `npm run electron:build`.
 
 ---
 
@@ -27,7 +27,10 @@
 - **Natural-language quick add** — type `Email Sam at 5pm #work !high` and it parses the time, category, and priority automatically.
 - **Two boards** — Pending & Completed side by side, each accent-colored (teal / lime).
 - **Rich tasks** — priority, category, reminders, **subtasks** (with per-task progress), pin, postpone, duplicate, inline edit.
-- **Drag-and-drop reordering** (via `@dnd-kit`), live search, and icon-labeled filters (All / Active / Completed / High Priority / Work / Personal).
+- **Recurring tasks** — repeat daily / weekdays / weekly; each re-spawns fresh on its next matching day.
+- **Week view** — a 7-day overview grouping tasks by their scheduled day, so postponed and upcoming recurring tasks show at a glance.
+- **Custom categories** — add / recolor / delete your own categories; they drive the filters, `#tag` quick-add, and each task's badge + border color.
+- **Drag-and-drop reordering** (via `@dnd-kit`), live search, and filters (status filters + one pill per category).
 - **Reminder assistant** — schedule reminders by date + time with a **lead** (5/10/15/30 min, 1–2 h, or custom before) and **repeat until done** (every 5–120 min or custom). An always-visible dashboard banner lists what's due, **ordered and styled by priority** (High/Medium/Low), with a matching loud→soft alarm and desktop **browser notifications** (high-priority ones stay until dismissed). Per-reminder **Mark Done / Snooze / Dismiss / View task**, an **Overdue** indicator, and an **Upcoming reminders** table. Fires while the tab is open; mutable. *(No push server, so it can't alert when the browser is fully closed.)*
 - **Per-event sound effects** (Web Audio) with a global on/off toggle.
 - **Progress dashboard** — gradient progress ring (glows & pulses at 100%), header stat chips, and a time-of-day greeting with a live clock.
