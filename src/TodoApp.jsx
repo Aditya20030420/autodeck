@@ -4,7 +4,7 @@ import {
   Bell, Sun, Moon, ListTodo, PartyPopper, Inbox, Coffee, CheckCircle2,
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
-  FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw,
+  FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -84,8 +84,8 @@ function normalizeForToday(tasks) {
           reminder: base.reminder ? { ...base.reminder, date: next, lastAlert: null, snoozeUntil: null } : null,
         }
       }
-      // Non-recurring unfinished task rolls forward to today.
-      return { ...base, day: t }
+      // Past unfinished task rolls forward to today; future-dated (postponed) stays put.
+      return x.day < t ? { ...base, day: t } : base
     })
 }
 
@@ -864,7 +864,7 @@ export default function TodoApp() {
 
         {/* View tabs: Tasks board vs Daily Report */}
         <div className="glass mb-6 inline-flex gap-0.5 rounded-full p-1 shadow-sm">
-          {[['tasks', 'Tasks', ListTodo], ['report', 'Daily Report', ClipboardList]].map(([id, label, Icon]) => (
+          {[['tasks', 'Tasks', ListTodo], ['week', 'Week', CalendarDays], ['report', 'Daily Report', ClipboardList]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setView(id)}
               className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-300 active:scale-[0.97] ${
                 view === id ? 'bg-teal-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
@@ -876,6 +876,8 @@ export default function TodoApp() {
 
         {view === 'report' ? (
           <DailyReport tasks={tasks} onAddGoal={addTask} onToggleGoal={toggle} />
+        ) : view === 'week' ? (
+          <WeekView tasks={tasks} onView={viewTask} />
         ) : (
         <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
@@ -1230,6 +1232,56 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ---------------------------------- Week ----------------------------------- */
+/** 7-day overview (today + 6). Tasks are grouped by their scheduled day, so
+    postponed and future recurring tasks show up on the right day. */
+function WeekView({ tasks, onView }) {
+  const days = useMemo(() => {
+    const base = new Date()
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d })
+  }, [])
+  const t0 = todayStr()
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {days.map((d) => {
+        const ds = dateStr(d)
+        const items = tasks.filter((x) => x.day === ds)
+          .sort((a, b) => (a.done - b.done) || PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority])
+        const isToday = ds === t0
+        const openCount = items.filter((x) => !x.done).length
+        return (
+          <div key={ds} className={`glass rounded-2xl p-3 ${isToday ? 'ring-2 ring-teal-500/40' : ''}`}>
+            <div className="mb-2 flex items-baseline justify-between">
+              <span className={`text-sm font-bold ${isToday ? 'text-teal-600 dark:text-teal-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                {isToday ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' })}
+              </span>
+              <span className="text-xs text-slate-400">{d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            </div>
+            {items.length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-300 dark:text-slate-600">—</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {items.map((x) => (
+                  <li key={x.id}>
+                    <button onClick={() => onView(x.id)}
+                      className="glass-sm flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:ring-1 hover:ring-teal-500/30">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
+                      <span className={`min-w-0 flex-1 truncate text-xs ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
+                      {x.recur && <RotateCw size={10} className="shrink-0 text-teal-500" />}
+                      {x.reminder && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{fmtTime(x.reminder.time)}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {openCount > 0 && <div className="mt-2 text-right text-[10px] font-semibold text-slate-400">{openCount} open</div>}
+          </div>
+        )
+      })}
     </div>
   )
 }
