@@ -4,7 +4,7 @@ import {
   Bell, Sun, Moon, ListTodo, PartyPopper, Inbox, Coffee, CheckCircle2,
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
-  FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2,
+  FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -63,15 +63,30 @@ function useLocalStorage(key, initial) {
 function normalizeForToday(tasks) {
   const t = todayStr()
   return tasks
-    .filter((x) => x.day === t || !x.done)
-    .map((x, i) => ({
-      subtasks: [],                       // default for tasks saved before subtasks existed
-      order: x.order ?? x.createdAt ?? i, // default manual-sort order
-      ...x,
-      // Migrate legacy 'HH:MM' string reminders → object; keep future-dated ones as-is.
-      reminder: migrateReminder(x.reminder),
-      ...(x.day === t ? {} : { day: t }),  // roll unfinished tasks forward (reminder keeps its own date)
-    }))
+    // Keep today's tasks, any unfinished task, and every recurring task.
+    .filter((x) => x.day === t || !x.done || x.recur)
+    .map((x, i) => {
+      const base = {
+        subtasks: [],                       // default for tasks saved before subtasks existed
+        order: x.order ?? x.createdAt ?? i, // default manual-sort order
+        ...x,
+        // Migrate legacy 'HH:MM' string reminders → object; keep future-dated ones as-is.
+        reminder: migrateReminder(x.reminder),
+      }
+      if (x.day === t) return base
+      // A recurring task re-spawns fresh (undone) on its next matching day.
+      if (x.recur) {
+        if (x.day > t) return base  // already scheduled ahead — leave it
+        const anchorDow = new Date(`${x.day}T00:00`).getDay()
+        const next = nextOccurrence(x.recur, new Date(), anchorDow)
+        return {
+          ...base, day: next, done: false,
+          reminder: base.reminder ? { ...base.reminder, date: next, lastAlert: null, snoozeUntil: null } : null,
+        }
+      }
+      // Non-recurring unfinished task rolls forward to today.
+      return { ...base, day: t }
+    })
 }
 
 /**
@@ -174,6 +189,22 @@ const fmtDur = (m) => (m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : 
 const freqLabel = (r) => r.repeat ? `Every ${r.repeat} min` : r.lead ? `${r.lead} min before` : 'Once'
 /** Pick the alert sound for a priority level. */
 const prioritySfx = (priority) => (priority === 'High' ? 'alarm' : priority === 'Medium' ? 'reminder' : 'soft')
+
+/* Recurrence: a task can re-spawn (fresh, undone) on each matching day. */
+const RECUR_OPTIONS = [['Does not repeat', ''], ['Every day', 'daily'], ['Weekdays', 'weekdays'], ['Every week', 'weekly']]
+const RECUR_LABEL = { daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly' }
+/** Next date (YYYY-MM-DD) on/after `from` that matches the recurrence rule. */
+function nextOccurrence(recur, from, anchorDow) {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+  for (let i = 0; i < 14; i++) {
+    const dow = d.getDay()
+    if (recur === 'daily') return dateStr(d)
+    if (recur === 'weekdays' && dow >= 1 && dow <= 5) return dateStr(d)
+    if (recur === 'weekly' && dow === anchorDow) return dateStr(d)
+    d.setDate(d.getDate() + 1)
+  }
+  return dateStr(from)
+}
 
 // --- static config ---
 const PRIORITIES = ['Low', 'Medium', 'High']
@@ -581,7 +612,7 @@ export default function TodoApp() {
     setTasks((prev) => [...prev, {
       id: crypto.randomUUID(),
       text: data.text, priority: data.priority, category: data.category,
-      reminder: data.reminder || null,
+      reminder: data.reminder || null, recur: data.recur || null,
       done: false, pinned: false, day: todayStr(), createdAt: Date.now(),
       order: Date.now(), subtasks: [],
     }])
@@ -1308,6 +1339,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults }) {
   const [text, setText] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [category, setCategory] = useState('Work')
+  const [recur, setRecur] = useState('')   // recurrence rule ('' = none)
   const [rem, setRem] = useState(null)     // reminder object from ReminderEditor
   const [remKey, setRemKey] = useState(0)  // bump to remount/reset the editor after add
 
@@ -1328,8 +1360,9 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults }) {
       priority: p.priority || priority,
       category: p.category || category,
       reminder,
+      recur: recur || null,
     })
-    setText(''); setRem(null); setRemKey((k) => k + 1)
+    setText(''); setRem(null); setRemKey((k) => k + 1); setRecur('')
     if (reminder) onFirstReminder()  // ask for desktop-notification permission (optional bonus)
   }
 
@@ -1361,6 +1394,9 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults }) {
         </select>
         <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" title="Category" className={selectCls}>
           {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <select value={recur} onChange={(e) => setRecur(e.target.value)} aria-label="Repeat" title="Repeat this task" className={selectCls}>
+          {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
         </select>
         <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} />
         {rem && !notifyOn && (
@@ -1502,6 +1538,11 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), o
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${CATEGORY_BADGE[task.category]}`}>{task.category}</span>
+        {task.recur && (
+          <span className="flex items-center gap-0.5 rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold text-teal-700 sm:text-[11px] dark:text-teal-300" title={`Repeats: ${RECUR_LABEL[task.recur]}`}>
+            <RotateCw size={10} /> {RECUR_LABEL[task.recur]}
+          </span>
+        )}
         {overdue && (
           <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 sm:text-[11px] dark:text-rose-300">
             Overdue {fmtDur(overdueMins(task.reminder, nowTick))}
