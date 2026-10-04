@@ -96,11 +96,11 @@ function normalizeForToday(tasks) {
  *   priority "!high" / "!med" / "!low"         → priority
  * Returns the cleaned text plus any detected fields (undefined if not present).
  */
-function parseQuickAdd(raw) {
+function parseQuickAdd(raw, categories = DEFAULT_CATEGORIES) {
   let text = ` ${raw} `
   let category, priority, reminder
 
-  const catMap = { work: 'Work', personal: 'Personal', urgent: 'Urgent' }
+  const catMap = Object.fromEntries(categories.map((c) => [c.name.toLowerCase(), c.name]))
   text = text.replace(/#(\w+)/g, (m, tag) => {
     const c = catMap[tag.toLowerCase()]
     if (c) { category = c; return ' ' }
@@ -209,7 +209,16 @@ function nextOccurrence(recur, from, anchorDow) {
 // --- static config ---
 const PRIORITIES = ['Low', 'Medium', 'High']
 const PRIORITY_RANK = { Low: 0, Medium: 1, High: 2 }
-const CATEGORIES = ['Work', 'Personal', 'Urgent']
+// Categories are user-editable (name + colour), stored under "todo.categories".
+const DEFAULT_CATEGORIES = [
+  { name: 'Work', color: '#0ea5e9' },
+  { name: 'Personal', color: '#8b5cf6' },
+  { name: 'Urgent', color: '#f43f5e' },
+]
+/** Colour for a category name (falls back to slate for deleted ones). */
+const catColor = (cats, name) => cats.find((c) => c.name === name)?.color || '#94a3b8'
+/** Inline style for a category badge — a translucent tint of its own colour. */
+const catBadgeStyle = (cats, name) => { const c = catColor(cats, name); return { backgroundColor: `${c}26`, color: c } }
 // Reminder dropdown presets: [label, minutes]. 'custom' lets the user type any value.
 const LEAD_OPTIONS = [['At the time', 0], ['5 min before', 5], ['10 min before', 10], ['15 min before', 15], ['30 min before', 30], ['1 hour before', 60], ['2 hours before', 120]]
 const REPEAT_OPTIONS = [['Once', 0], ['Every 5 min', 5], ['Every 10 min', 10], ['Every 15 min', 15], ['Every 30 min', 30], ['Every hour', 60], ['Every 2 hours', 120]]
@@ -222,19 +231,12 @@ const PRIORITY_BADGE = {
   High: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 }
 const PRIORITY_DOT = { Low: 'bg-slate-400', Medium: 'bg-amber-500', High: 'bg-rose-500' }
-const CATEGORY_BADGE = {
-  Work: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  Personal: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  Urgent: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-}
-// Left-border colour per category (inline style — beats the card's border-color utility).
-const CATEGORY_BORDER = { Work: '#0ea5e9', Personal: '#8b5cf6', Urgent: '#f43f5e' }
-
-const FILTERS = ['All', 'Active', 'Completed', 'High Priority', 'Work', 'Personal']
+// Status filters are fixed; category filters are appended dynamically from the
+// user's categories at render time.
+const STATUS_FILTERS = ['All', 'Active', 'Completed', 'High Priority']
 
 const FILTER_ICON = {
-  All: LayoutGrid, Active: Circle, Completed: CheckCircle2,
-  'High Priority': Flame, Work: Briefcase, Personal: User,
+  All: LayoutGrid, Active: Circle, Completed: CheckCircle2, 'High Priority': Flame,
 }
 
 // Per-filter colours: [active pill, inactive tinted pill].
@@ -247,10 +249,6 @@ const FILTER_STYLE = {
         'bg-lime-500/15 text-lime-700 ring-1 ring-inset ring-lime-500/20 hover:bg-lime-500/25 dark:text-lime-300'],
   'High Priority': ['bg-rose-600 text-white shadow-lg shadow-rose-600/30 ring-1 ring-inset ring-white/20',
         'bg-rose-500/10 text-rose-700 ring-1 ring-inset ring-rose-500/15 hover:bg-rose-500/15 dark:text-rose-300'],
-  Work: ['bg-sky-600 text-white shadow-lg shadow-sky-600/30 ring-1 ring-inset ring-white/20',
-        'bg-sky-500/10 text-sky-700 ring-1 ring-inset ring-sky-500/15 hover:bg-sky-500/15 dark:text-sky-300'],
-  Personal: ['bg-violet-600 text-white shadow-lg shadow-violet-600/30 ring-1 ring-inset ring-white/20',
-        'bg-violet-500/10 text-violet-700 ring-1 ring-inset ring-violet-500/15 hover:bg-violet-500/15 dark:text-violet-300'],
 }
 
 /* Shared AudioContext. Browsers keep it suspended until a user gesture, so we
@@ -331,6 +329,7 @@ export default function TodoApp() {
   const [volume, setVolume] = useLocalStorage('todo.volume', 0.8)    // master sound volume 0–1
   const [hpAlarm, setHpAlarm] = useLocalStorage('todo.hpAlarm', true) // loud alarm for high-priority reminders
   const [remDefaults, setRemDefaults] = useLocalStorage('todo.remDefaults', { lead: 0, repeat: 0 })
+  const [categories, setCategories] = useLocalStorage('todo.categories', DEFAULT_CATEGORIES)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [celebrate, setCelebrate] = useState(false)
@@ -492,8 +491,8 @@ export default function TodoApp() {
         if (filter === 'Active' && x.done) return false
         if (filter === 'Completed' && !x.done) return false
         if (filter === 'High Priority' && x.priority !== 'High') return false
-        if (filter === 'Work' && x.category !== 'Work') return false
-        if (filter === 'Personal' && x.category !== 'Personal') return false
+        // Any non-status filter is a category name.
+        if (!STATUS_FILTERS.includes(filter) && x.category !== filter) return false
         if (q && !x.text.toLowerCase().includes(q)) return false
         return true
       })
@@ -851,6 +850,7 @@ export default function TodoApp() {
             volume={volume} setVolume={setVolume}
             hpAlarm={hpAlarm} setHpAlarm={setHpAlarm}
             remDefaults={remDefaults} setRemDefaults={setRemDefaults}
+            categories={categories} setCategories={setCategories}
             notify={notify} muted={muted} onRequestNotify={requestNotify} />
         )}
 
@@ -882,7 +882,7 @@ export default function TodoApp() {
         <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
 
-        <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} remDefaults={remDefaults} />
+        <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} remDefaults={remDefaults} categories={categories} />
 
         {upcoming.length > 0 && <UpcomingReminders items={upcoming} nowTick={nowTick} onView={viewTask} onCancel={(id) => editReminder(id, null)} />}
 
@@ -897,20 +897,26 @@ export default function TodoApp() {
           />
         </div>
 
-        {/* Filter tabs */}
+        {/* Filter tabs: fixed status filters + one pill per category */}
         <div className="mb-5 flex flex-wrap gap-1.5">
-          {FILTERS.map((f) => {
+          {STATUS_FILTERS.map((f) => {
             const Icon = FILTER_ICON[f]
             return (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
+              <button key={f} onClick={() => setFilter(f)}
                 className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] [&_svg]:transition-transform hover:[&_svg]:scale-110 ${
-                  FILTER_STYLE[f][filter === f ? 0 : 1]
-                }`}
-              >
-                <Icon size={13} strokeWidth={2.2} />
-                {f}
+                  FILTER_STYLE[f][filter === f ? 0 : 1]}`}>
+                <Icon size={13} strokeWidth={2.2} />{f}
+              </button>
+            )
+          })}
+          {categories.map((c) => {
+            const active = filter === c.name
+            return (
+              <button key={c.name} onClick={() => setFilter(c.name)}
+                style={active ? { backgroundColor: c.color, color: '#fff' } : { backgroundColor: `${c.color}1a`, color: c.color }}
+                className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97]">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: active ? '#fff' : c.color }} />
+                {c.name}
               </button>
             )
           })}
@@ -930,7 +936,7 @@ export default function TodoApp() {
                   <ul className="space-y-2" aria-label="Pending tasks">
                     {pending.map((task, i) => (
                       <SortableTaskCard key={task.id} task={task} index={i} editing={editingId === task.id}
-                        highlight={highlightId === task.id} nowTick={nowTick}
+                        highlight={highlightId === task.id} nowTick={nowTick} categories={categories}
                         onToggle={toggle} onEdit={setEditingId} onRename={rename}
                         onDelete={remove} onPostpone={postpone} onDuplicate={duplicate} onPin={togglePin}
                         onEditReminder={editReminder}
@@ -950,7 +956,7 @@ export default function TodoApp() {
               <ul className="space-y-2" aria-label="Completed tasks">
                 {completed.map((task, i) => (
                   <TaskCard key={task.id} task={task} index={i} editing={editingId === task.id}
-                    highlight={highlightId === task.id} nowTick={nowTick}
+                    highlight={highlightId === task.id} nowTick={nowTick} categories={categories}
                     onToggle={toggle} onEdit={setEditingId} onRename={rename}
                     onDelete={remove} onPostpone={postpone} onDuplicate={duplicate} onPin={togglePin}
                     onEditReminder={editReminder}
@@ -1387,21 +1393,24 @@ function ReminderEditor({ initial, onChange, defaults }) {
 }
 
 /* --------------------------------- Add form -------------------------------- */
-function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults }) {
+function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories }) {
   const [text, setText] = useState('')
   const [priority, setPriority] = useState('Medium')
-  const [category, setCategory] = useState('Work')
+  const [category, setCategory] = useState(categories[0]?.name || 'Work')
   const [recur, setRecur] = useState('')   // recurrence rule ('' = none)
   const [rem, setRem] = useState(null)     // reminder object from ReminderEditor
   const [remKey, setRemKey] = useState(0)  // bump to remount/reset the editor after add
 
+  // Keep the selected category valid if the list changes (e.g. deleted in settings).
+  useEffect(() => { if (!categories.some((c) => c.name === category)) setCategory(categories[0]?.name || '') }, [categories, category])
+
   // Live parse of what's typed, so we can preview and use natural-language shortcuts.
-  const parsed = text.trim() ? parseQuickAdd(text) : null
+  const parsed = text.trim() ? parseQuickAdd(text, categories) : null
   const detected = parsed && (parsed.category || parsed.priority || parsed.reminder)
 
   const submit = (e) => {
     e.preventDefault()
-    const p = parseQuickAdd(text)
+    const p = parseQuickAdd(text, categories)
     if (!p.text) return
     // Manual editor wins; otherwise fall back to a natural-language time (today, once).
     const reminder = rem
@@ -1445,7 +1454,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults }) {
           {PRIORITIES.map((p) => <option key={p} value={p}>{p} priority</option>)}
         </select>
         <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" title="Category" className={selectCls}>
-          {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+          {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
         </select>
         <select value={recur} onChange={(e) => setRecur(e.target.value)} aria-label="Repeat" title="Repeat this task" className={selectCls}>
           {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
@@ -1491,7 +1500,7 @@ function SortableTaskCard(props) {
     handleProps={{ ...attributes, ...listeners }} />
 }
 
-function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
+function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), categories = DEFAULT_CATEGORIES, onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
   onEditReminder, onAddSubtask, onToggleSubtask, onRemoveSubtask, dragRef, dragStyle, handleProps, isDragging }) {
   const [draft, setDraft] = useState(task.text)
   const [expanded, setExpanded] = useState(false)
@@ -1512,7 +1521,7 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), o
       ref={dragRef}
       id={`task-${task.id}`}
       aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${reminderLabel(task.reminder)}.` : ''}${overdue ? ' Overdue.' : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
-      style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: CATEGORY_BORDER[task.category] }}
+      style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: catColor(categories, task.category) }}
       className={`glass-sm group animate-fade-up rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
       highlight ? 'ring-2 ring-sky-500/70 soft-pulse' : task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
       <div className="flex items-center gap-2">
@@ -1589,7 +1598,7 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), o
       {/* badges row — wraps under the title so it never crowds the task text */}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${CATEGORY_BADGE[task.category]}`}>{task.category}</span>
+        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, task.category)}>{task.category}</span>
         {task.recur && (
           <span className="flex items-center gap-0.5 rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold text-teal-700 sm:text-[11px] dark:text-teal-300" title={`Repeats: ${RECUR_LABEL[task.recur]}`}>
             <RotateCw size={10} /> {RECUR_LABEL[task.recur]}
@@ -1795,12 +1804,22 @@ function Switch({ checked, onChange, label }) {
   )
 }
 
-function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, notify, muted, onRequestNotify }) {
+function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, notify, muted, onRequestNotify }) {
+  const [newCat, setNewCat] = useState('')
+  const [newColor, setNewColor] = useState('#0ea5e9')
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+  const addCat = () => {
+    const name = newCat.trim()
+    if (!name || categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) return
+    setCategories([...categories, { name, color: newColor }])
+    setNewCat('')
+  }
+  const removeCat = (name) => setCategories(categories.filter((c) => c.name !== name))
+  const recolor = (name, color) => setCategories(categories.map((c) => (c.name === name ? { ...c, color } : c)))
   const sel = 'rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50'
   const notifState = notify ? (muted ? 'Muted' : 'On') : 'Off'
 
@@ -1881,6 +1900,32 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
               </label>
             </div>
             <p className="mt-2 text-xs text-slate-400">Pre-fills the reminder fields when you add a task.</p>
+          </div>
+
+          {/* Categories */}
+          <div className="border-t border-black/5 pt-4 dark:border-white/10">
+            <div className="mb-2 font-semibold text-slate-700 dark:text-slate-200">Categories</div>
+            <ul className="mb-2 space-y-1.5">
+              {categories.map((c) => (
+                <li key={c.name} className="flex items-center gap-2">
+                  <input type="color" value={c.color} onChange={(e) => recolor(c.name, e.target.value)}
+                    aria-label={`Colour for ${c.name}`} title="Change colour"
+                    className="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
+                  <span className="flex-1 text-sm text-slate-700 dark:text-slate-200">{c.name}</span>
+                  <button onClick={() => removeCat(c.name)} aria-label={`Delete ${c.name}`} title="Delete category"
+                    disabled={categories.length <= 1}
+                    className="rounded-full p-1 text-slate-400 transition hover:text-rose-500 disabled:opacity-30"><X size={14} /></button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-2">
+              <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} aria-label="New category colour"
+                className="h-7 w-7 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
+              <input value={newCat} onChange={(e) => setNewCat(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addCat() }} placeholder="New category…"
+                className={`${sel} flex-1`} />
+              <button onClick={addCat} className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">Add</button>
+            </div>
           </div>
 
           <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10">
