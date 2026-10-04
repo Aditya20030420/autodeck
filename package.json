@@ -1,7 +1,7 @@
 {
   "name": "today-todo",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "description": "AutoDeck — a glassmorphic daily to-do app.",
   "author": "Aditya Ganjoo",
