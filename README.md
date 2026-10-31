@@ -73,7 +73,7 @@ public/
 
 ## Notes
 
-- Reminders fire while the app tab is open (no service worker yet).
+- Reminders fire while the app tab is open. A service worker (`public/sw.js`) adds Done / Snooze / View buttons to notifications on the web build; the desktop build uses plain notifications.
 - Data lives only in the browser that created it — use **Export → JSON** for backups.
 
 ---
