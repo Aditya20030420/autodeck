@@ -23,5 +23,8 @@ jobs:
       - name: Publish release with installer + portable exe
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
           generate_release_notes: true
