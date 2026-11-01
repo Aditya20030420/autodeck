@@ -1,7 +1,7 @@
 {
   "name": "today-todo",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "description": "AutoDeck — a glassmorphic daily to-do app.",
   "author": "Aditya Ganjoo",
@@ -25,13 +25,9 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "icon": "build/icon.ico"
-    },
-    "portable": {
-      "artifactName": "AutoDeck-Portable.exe"
     },
     "nsis": {
       "oneClick": false,

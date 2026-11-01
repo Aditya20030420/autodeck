@@ -33,8 +33,8 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow()
-  // Auto-update from GitHub Releases (installed build only; the portable exe can't self-update).
-  if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR) {
+  // Auto-update from GitHub Releases (installed build only).
+  if (app.isPackaged) {
     try { require('electron-updater').autoUpdater.checkForUpdatesAndNotify() } catch {}
   }
   app.on('activate', () => {

@@ -20,7 +20,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run electron:build
-      - name: Publish release with installer + portable exe
+      - name: Publish release with installer
         uses: softprops/action-gh-release@v2
         with:
           files: |
