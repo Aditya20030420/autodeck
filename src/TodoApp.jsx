@@ -1293,7 +1293,51 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
     return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d })
   }, [])
   const t0 = todayStr()
+  const lastDay = dateStr(days[6])
+  // Tasks scheduled beyond the 7 shown days would otherwise be invisible.
+  const later = tasks.filter((x) => x.day > lastDay).sort((a, b) => a.day.localeCompare(b.day) || (a.done - b.done))
+  const renderItem = (x, isToday, showDate = false) => (
+    <li key={x.id} className="glass-sm rounded-lg">
+                      <div className="flex items-center gap-1.5 px-2 py-1.5">
+                        <button onClick={() => onToggle(x.id)} aria-label={x.done ? 'Mark incomplete' : 'Mark complete'}
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition ${
+                            x.done ? 'border-transparent bg-lime-500 text-white' : 'border-slate-300 hover:border-teal-500 dark:border-slate-600'}`}>
+                          {x.done && <Check size={10} strokeWidth={3} />}
+                        </button>
+                        <button onClick={() => setOpenId(openId === x.id ? null : x.id)} aria-expanded={openId === x.id}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
+                          <span className={`min-w-0 flex-1 truncate text-xs ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
+                          {showDate && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{x.day.slice(5)}</span>}
+                          {x.recur && <RotateCw size={10} className="shrink-0 text-teal-500" />}
+                          {x.reminder && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{fmtTime(x.reminder.time)}</span>}
+                        </button>
+                      </div>
+                      {openId === x.id && (
+                        <div className="flex flex-wrap items-center gap-1.5 border-t border-black/5 px-2 py-1.5 dark:border-white/10">
+                          <input type="date" value={x.day} min={t0} aria-label="Move to date"
+                            onChange={(e) => e.target.value && onReschedule(x.id, e.target.value)}
+                            className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50" />
+                          {!isToday && (
+                            <button onClick={() => onReschedule(x.id, t0)}
+                              className="rounded-full bg-teal-500 px-2.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-teal-600 active:scale-95">
+                              Move to today
+                            </button>
+                          )}
+                          {isToday && (
+                            <button onClick={() => onView(x.id)}
+                              className="rounded-full bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-500/20 dark:text-slate-300">
+                              Open
+                            </button>
+                          )}
+                          <button onClick={() => { onDelete(x.id); setOpenId(null) }} aria-label="Delete task" title="Delete"
+                            className="ml-auto rounded-md p-1 text-slate-400 transition hover:text-rose-500"><Trash2 size={13} /></button>
+                        </div>
+                      )}
+                    </li>
+  )
   return (
+    <>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {days.map((d) => {
         const ds = dateStr(d)
@@ -1313,45 +1357,7 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
               <p className="py-4 text-center text-xs text-slate-300 dark:text-slate-600">—</p>
             ) : (
               <ul className="space-y-1.5">
-                {items.map((x) => (
-                  <li key={x.id} className="glass-sm rounded-lg">
-                    <div className="flex items-center gap-1.5 px-2 py-1.5">
-                      <button onClick={() => onToggle(x.id)} aria-label={x.done ? 'Mark incomplete' : 'Mark complete'}
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition ${
-                          x.done ? 'border-transparent bg-lime-500 text-white' : 'border-slate-300 hover:border-teal-500 dark:border-slate-600'}`}>
-                        {x.done && <Check size={10} strokeWidth={3} />}
-                      </button>
-                      <button onClick={() => setOpenId(openId === x.id ? null : x.id)} aria-expanded={openId === x.id}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
-                        <span className={`min-w-0 flex-1 truncate text-xs ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
-                        {x.recur && <RotateCw size={10} className="shrink-0 text-teal-500" />}
-                        {x.reminder && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{fmtTime(x.reminder.time)}</span>}
-                      </button>
-                    </div>
-                    {openId === x.id && (
-                      <div className="flex flex-wrap items-center gap-1.5 border-t border-black/5 px-2 py-1.5 dark:border-white/10">
-                        <input type="date" value={x.day} min={t0} aria-label="Move to date"
-                          onChange={(e) => e.target.value && onReschedule(x.id, e.target.value)}
-                          className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50" />
-                        {!isToday && (
-                          <button onClick={() => onReschedule(x.id, t0)}
-                            className="rounded-full bg-teal-500 px-2.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-teal-600 active:scale-95">
-                            Move to today
-                          </button>
-                        )}
-                        {isToday && (
-                          <button onClick={() => onView(x.id)}
-                            className="rounded-full bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-500/20 dark:text-slate-300">
-                            Open
-                          </button>
-                        )}
-                        <button onClick={() => { onDelete(x.id); setOpenId(null) }} aria-label="Delete task" title="Delete"
-                          className="ml-auto rounded-md p-1 text-slate-400 transition hover:text-rose-500"><Trash2 size={13} /></button>
-                      </div>
-                    )}
-                  </li>
-                ))}
+                {items.map((x) => renderItem(x, isToday))}
               </ul>
             )}
             {openCount > 0 && <div className="mt-2 text-right text-[10px] font-semibold text-slate-400">{openCount} open</div>}
@@ -1359,6 +1365,18 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
         )
       })}
     </div>
+    {later.length > 0 && (
+      <div className="glass mt-3 rounded-2xl p-3">
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Later</span>
+          <span className="text-xs text-slate-400">{later.length} scheduled after this week</span>
+        </div>
+        <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          {later.map((x) => renderItem(x, false, true))}
+        </ul>
+      </div>
+    )}
+    </>
   )
 }
 
