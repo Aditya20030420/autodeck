@@ -1830,7 +1830,10 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
         className="glass animate-fade-up relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-[1.5rem] p-6 shadow-soft">
         <div className="mb-4 flex items-center gap-2">
           <Settings size={18} className="text-teal-500" />
-          <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Reminder & notification settings</h2>
+          <div className="leading-tight">
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Reminder & notification settings</h2>
+            <p className="text-xs font-semibold text-slate-400">AutoDeck v{__APP_VERSION__}</p>
+          </div>
           <button onClick={onClose} aria-label="Close settings" className="ml-auto rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-700 dark:hover:bg-white/10"><X size={18} /></button>
         </div>
 
@@ -1930,9 +1933,7 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
 
           <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10">
             Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.
-          </p>
-          <p className="text-center text-xs font-semibold text-slate-400">AutoDeck v{__APP_VERSION__}</p>
-        </div>
+          </p>        </div>
       </div>
     </div>
   )
