@@ -49,10 +49,16 @@ app.whenReady().then(() => {
       autoUpdater.on('update-not-available', () => setUpdate({ state: 'latest' }))
       autoUpdater.on('update-available', (i) => setUpdate({ state: 'downloading', version: i.version, percent: 0 }))
       autoUpdater.on('download-progress', (p) => setUpdate({ state: 'downloading', version: update.version, percent: Math.round(p.percent) }))
-      autoUpdater.on('update-downloaded', (i) => setUpdate({ state: 'ready', version: i.version }))
+      // Install as soon as it's downloaded (short delay so the banner shows). Tasks save live, so a restart loses nothing.
+      autoUpdater.on('update-downloaded', (i) => {
+        setUpdate({ state: 'ready', version: i.version })
+        setTimeout(() => autoUpdater.quitAndInstall(true, true), 5000)
+      })
       autoUpdater.on('error', (e) => setUpdate({ state: 'error', message: String(e?.message || e).slice(0, 120) }))
       ipcMain.on('update:install', () => autoUpdater.quitAndInstall(true, true))
       autoUpdater.checkForUpdates()
+      // Also re-check hourly so an app left open for days still updates.
+      setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 60 * 60 * 1000)
     } catch {}
   }
   app.on('activate', () => {

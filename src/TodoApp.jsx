@@ -1017,12 +1017,12 @@ function UpdateBanner() {
       <div className="flex items-center gap-3">
         <Download size={16} className="shrink-0 text-teal-500" />
         <span className="flex-1 font-semibold text-slate-700 dark:text-slate-200">
-          {ready ? `Update ${u.version} is ready` : `Downloading update ${u.version}… ${u.percent}%`}
+          {ready ? `Update ${u.version} downloaded — restarting to install…` : `Downloading update ${u.version}… ${u.percent}%`}
         </span>
         {ready && (
           <button onClick={() => window.autodeck.installUpdate()}
             className="rounded-full bg-teal-500 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">
-            Restart &amp; update
+            Restart now
           </button>
         )}
       </div>
