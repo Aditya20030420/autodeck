@@ -1931,6 +1931,7 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
           <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10">
             Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.
           </p>
+          <p className="text-center text-xs font-semibold text-slate-400">AutoDeck v{__APP_VERSION__}</p>
         </div>
       </div>
     </div>

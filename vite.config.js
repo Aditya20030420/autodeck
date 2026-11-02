@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -13,8 +14,11 @@ const cspPlugin = {
   },
 }
 
+const { version } = JSON.parse(readFileSync('./package.json', 'utf8'))
+
 export default defineConfig({
   // Relative base so the build works from any path (e.g. GitHub Pages /autodeck/).
   base: './',
+  define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [react(), tailwindcss(), cspPlugin],
 })
