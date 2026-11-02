@@ -743,6 +743,8 @@ export default function TodoApp() {
     <div className="min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
 
+        <UpdateBanner />
+
         {/* Brand */}
         <div className="animate-fade-in mb-8 flex items-center gap-3">
           <AutoDeckIcon size={46} background={false} />
@@ -994,6 +996,40 @@ export default function TodoApp() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ------------------------------ Update banner ------------------------------ */
+/** Desktop-app auto-update progress (window.autodeck is injected by electron/preload.cjs). */
+function UpdateBanner() {
+  const [u, setU] = useState({ state: 'idle' })
+  useEffect(() => {
+    const api = window.autodeck
+    if (!api) return
+    api.getUpdate().then(setU).catch(() => {})
+    return api.onUpdate(setU)
+  }, [])
+  if (u.state !== 'downloading' && u.state !== 'ready') return null
+  const ready = u.state === 'ready'
+  return (
+    <div className="glass animate-fade-up mb-6 rounded-2xl p-3.5 text-sm" role="status">
+      <div className="flex items-center gap-3">
+        <Download size={16} className="shrink-0 text-teal-500" />
+        <span className="flex-1 font-semibold text-slate-700 dark:text-slate-200">
+          {ready ? `Update ${u.version} is ready` : `Downloading update ${u.version}… ${u.percent}%`}
+        </span>
+        {ready && (
+          <button onClick={() => window.autodeck.installUpdate()}
+            className="rounded-full bg-teal-500 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">
+            Restart &amp; update
+          </button>
+        )}
+      </div>
+      <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-500/10">
+        <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-sky-500 transition-all duration-300"
+          style={{ width: `${ready ? 100 : u.percent}%` }} />
+      </div>
     </div>
   )
 }

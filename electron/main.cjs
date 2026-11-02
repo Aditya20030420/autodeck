@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, shell, ipcMain } = require('electron')
 const path = require('path')
 
 function createWindow() {
@@ -11,7 +11,7 @@ function createWindow() {
     autoHideMenuBar: true,
     title: 'AutoDeck',
     icon: path.join(__dirname, 'icon.png'),
-    webPreferences: { contextIsolation: true },
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'preload.cjs') },
   })
 
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
@@ -31,11 +31,29 @@ function createWindow() {
   })
 }
 
+// Auto-update status, mirrored to the page so it can show a progress bar.
+let update = { state: 'idle' }
+const setUpdate = (s) => {
+  update = s
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('update:status', s))
+}
+
 app.whenReady().then(() => {
+  ipcMain.handle('update:get', () => update)
   createWindow()
   // Auto-update from GitHub Releases (installed build only).
   if (app.isPackaged) {
-    try { require('electron-updater').autoUpdater.checkForUpdatesAndNotify() } catch {}
+    try {
+      const { autoUpdater } = require('electron-updater')
+      autoUpdater.on('checking-for-update', () => setUpdate({ state: 'checking' }))
+      autoUpdater.on('update-not-available', () => setUpdate({ state: 'latest' }))
+      autoUpdater.on('update-available', (i) => setUpdate({ state: 'downloading', version: i.version, percent: 0 }))
+      autoUpdater.on('download-progress', (p) => setUpdate({ state: 'downloading', version: update.version, percent: Math.round(p.percent) }))
+      autoUpdater.on('update-downloaded', (i) => setUpdate({ state: 'ready', version: i.version }))
+      autoUpdater.on('error', (e) => setUpdate({ state: 'error', message: String(e?.message || e).slice(0, 120) }))
+      ipcMain.on('update:install', () => autoUpdater.quitAndInstall(true, true))
+      autoUpdater.checkForUpdates()
+    } catch {}
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
