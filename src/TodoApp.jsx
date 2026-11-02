@@ -591,14 +591,18 @@ export default function TodoApp() {
     return () => navigator.serviceWorker.removeEventListener('message', onMsg)
   }, [toggle, snoozeReminder, viewTask])
 
-  const postpone = useCallback((id) => {
-    const d = new Date(); d.setDate(d.getDate() + 1)
+  // Move a task to any day (YYYY-MM-DD). Its reminder follows the day and re-arms;
+  // a finished task becomes pending again when it lands on a different day.
+  const reschedule = useCallback((id, day) => {
     patch(id, (x) => ({
-      ...x, day: dateStr(d), done: false,
-      // Shift a same-day reminder to tomorrow too, and re-arm it.
-      reminder: x.reminder ? { ...x.reminder, date: dateStr(d), lastAlert: null } : null,
+      ...x, day, done: x.day === day ? x.done : false,
+      reminder: x.reminder ? { ...x.reminder, date: day, lastAlert: null, snoozeUntil: null } : null,
     }))
   }, [patch])
+  const postpone = useCallback((id) => {
+    const d = new Date(); d.setDate(d.getDate() + 1)
+    reschedule(id, dateStr(d))
+  }, [reschedule])
   const duplicate = useCallback((id) => setTasks((prev) => {
     const src = prev.find((x) => x.id === id)
     if (!src) return prev
@@ -880,7 +884,7 @@ export default function TodoApp() {
         {view === 'report' ? (
           <DailyReport tasks={tasks} onAddGoal={addTask} onToggleGoal={toggle} />
         ) : view === 'week' ? (
-          <WeekView tasks={tasks} onView={viewTask} />
+          <WeekView tasks={tasks} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
         ) : (
         <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
@@ -1282,7 +1286,8 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
 /* ---------------------------------- Week ----------------------------------- */
 /** 7-day overview (today + 6). Tasks are grouped by their scheduled day, so
     postponed and future recurring tasks show up on the right day. */
-function WeekView({ tasks, onView }) {
+function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
+  const [openId, setOpenId] = useState(null)  // task whose action row is expanded
   const days = useMemo(() => {
     const base = new Date()
     return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d })
@@ -1309,14 +1314,42 @@ function WeekView({ tasks, onView }) {
             ) : (
               <ul className="space-y-1.5">
                 {items.map((x) => (
-                  <li key={x.id}>
-                    <button onClick={() => onView(x.id)}
-                      className="glass-sm flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:ring-1 hover:ring-teal-500/30">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
-                      <span className={`min-w-0 flex-1 truncate text-xs ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
-                      {x.recur && <RotateCw size={10} className="shrink-0 text-teal-500" />}
-                      {x.reminder && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{fmtTime(x.reminder.time)}</span>}
-                    </button>
+                  <li key={x.id} className="glass-sm rounded-lg">
+                    <div className="flex items-center gap-1.5 px-2 py-1.5">
+                      <button onClick={() => onToggle(x.id)} aria-label={x.done ? 'Mark incomplete' : 'Mark complete'}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition ${
+                          x.done ? 'border-transparent bg-lime-500 text-white' : 'border-slate-300 hover:border-teal-500 dark:border-slate-600'}`}>
+                        {x.done && <Check size={10} strokeWidth={3} />}
+                      </button>
+                      <button onClick={() => setOpenId(openId === x.id ? null : x.id)} aria-expanded={openId === x.id}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
+                        <span className={`min-w-0 flex-1 truncate text-xs ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
+                        {x.recur && <RotateCw size={10} className="shrink-0 text-teal-500" />}
+                        {x.reminder && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{fmtTime(x.reminder.time)}</span>}
+                      </button>
+                    </div>
+                    {openId === x.id && (
+                      <div className="flex flex-wrap items-center gap-1.5 border-t border-black/5 px-2 py-1.5 dark:border-white/10">
+                        <input type="date" value={x.day} min={t0} aria-label="Move to date"
+                          onChange={(e) => e.target.value && onReschedule(x.id, e.target.value)}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50" />
+                        {!isToday && (
+                          <button onClick={() => onReschedule(x.id, t0)}
+                            className="rounded-full bg-teal-500 px-2.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-teal-600 active:scale-95">
+                            Move to today
+                          </button>
+                        )}
+                        {isToday && (
+                          <button onClick={() => onView(x.id)}
+                            className="rounded-full bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-500/20 dark:text-slate-300">
+                            Open
+                          </button>
+                        )}
+                        <button onClick={() => { onDelete(x.id); setOpenId(null) }} aria-label="Delete task" title="Delete"
+                          className="ml-auto rounded-md p-1 text-slate-400 transition hover:text-rose-500"><Trash2 size={13} /></button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
