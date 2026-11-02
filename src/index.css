@@ -12,18 +12,36 @@ body { font-family: var(--font-display); -webkit-font-smoothing: antialiased; ba
 
 /* Aurora backdrop — Electric Teal + Laser Lime orbs behind the glass */
 body::before {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(38rem 38rem at 12% 8%, rgba(14,165,233,.20), transparent 60%),
-    radial-gradient(34rem 34rem at 88% 16%, rgba(31,54,82,.10), transparent 60%),
-    radial-gradient(40rem 40rem at 72% 92%, rgba(132,204,22,.16), transparent 62%);
+    radial-gradient(42rem 42rem at 10% 6%, rgba(14,165,233,.32), transparent 62%),
+    radial-gradient(36rem 36rem at 90% 14%, rgba(45,212,191,.26), transparent 62%),
+    radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.24), transparent 62%),
+    radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.18), transparent 62%);
+  animation: aurora-drift 32s ease-in-out infinite;
+  will-change: transform;
 }
 :where(.dark) body::before {
   background:
-    radial-gradient(38rem 38rem at 12% 8%, rgba(14,165,233,.26), transparent 60%),
-    radial-gradient(34rem 34rem at 88% 16%, rgba(14,165,233,.14), transparent 60%),
-    radial-gradient(40rem 40rem at 72% 92%, rgba(132,204,22,.16), transparent 62%);
+    radial-gradient(42rem 42rem at 10% 6%, rgba(14,165,233,.40), transparent 62%),
+    radial-gradient(36rem 36rem at 90% 14%, rgba(45,212,191,.28), transparent 62%),
+    radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.24), transparent 62%),
+    radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.26), transparent 62%);
 }
+/* slow orb drift — transform only, so it stays cheap */
+@keyframes aurora-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(2.5%, -2%, 0) scale(1.07); }
+}
+/* faint dot grid for texture, fading out toward the edges */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(rgba(15,23,42,.14) 1px, transparent 1.3px);
+  background-size: 26px 26px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 25%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 25%, transparent 80%);
+}
+:where(.dark) body::after { background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1.3px); }
 
 /* Frosted glass surface — web glassmorphism approximation (not Apple Liquid Glass) */
 .glass {
@@ -140,4 +158,5 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
   .strike::after { animation: none; }
   button:hover .ad-arrow-dn, button:hover .ad-arrow-up { animation: none; }
   .glow-pulse { animation: none; filter: drop-shadow(0 0 5px rgba(45,212,191,.7)); }
+  body::before { animation: none; }
 }
