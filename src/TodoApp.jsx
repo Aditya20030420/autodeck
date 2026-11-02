@@ -751,6 +751,7 @@ export default function TodoApp() {
           <div className="leading-none">
             <div className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
               <span className="text-slate-900 dark:text-white">Auto</span><span className="text-teal-500">Deck</span>
+              <span className="ml-2 rounded-full bg-slate-500/10 px-2 py-0.5 align-middle font-sans text-[10px] font-semibold tracking-normal text-slate-500 dark:text-slate-400">v{__APP_VERSION__}</span>
             </div>
             <div className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
               Your workflow, on autopilot.
