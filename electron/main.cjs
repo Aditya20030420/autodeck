@@ -90,7 +90,8 @@ app.on('before-quit', () => { quitting = true })
 app.on('second-instance', showWindow)
 
 app.whenReady().then(() => {
-  app.setAppUserModelId('com.autodeck.app') // so Windows toasts carry AutoDeck's name and icon
+  // Do not set an AppUserModelId here: the installed shortcuts and the taskbar pin carry Electron's default
+  // ("electron.app.AutoDeck"), and a different id makes the running app a second taskbar button.
   loadPrefs()
   applyAutostart()
   ipcMain.handle('update:get', () => update)
