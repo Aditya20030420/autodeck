@@ -104,6 +104,12 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     try {
       const { autoUpdater } = require('electron-updater')
+      // A small log (userData/update.log) so a missed or failed update can be diagnosed afterwards.
+      const logFile = path.join(app.getPath('userData'), 'update.log')
+      try { if (fs.statSync(logFile).size > 200000) fs.unlinkSync(logFile) } catch {}
+      const log = (m) => { try { fs.appendFileSync(logFile, `${new Date().toISOString()} v${app.getVersion()} ${m}\n`) } catch {} }
+      autoUpdater.logger = { info: log, warn: log, error: log, debug: () => {} }
+      log(`start, background=${prefs.background}, hidden=${startHidden}`)
       autoUpdater.on('checking-for-update', () => setUpdate({ state: 'checking' }))
       autoUpdater.on('update-not-available', () => setUpdate({ state: 'latest' }))
       autoUpdater.on('update-available', (i) => setUpdate({ state: 'downloading', version: i.version, percent: 0 }))
@@ -111,6 +117,8 @@ app.whenReady().then(() => {
       // Install as soon as it's downloaded (short delay so the banner shows). Tasks save live, so a restart loses nothing.
       autoUpdater.on('update-downloaded', (i) => {
         setUpdate({ state: 'ready', version: i.version })
+        log(`downloaded ${i.version}; installing in 5 s (background=${prefs.background}, window visible=${!!win && win.isVisible()})`)
+        // quitting=true lets the window really close even when "Reminders when closed" would normally hide it to the tray.
         setTimeout(() => { quitting = true; autoUpdater.quitAndInstall(true, true) }, 5000)
       })
       autoUpdater.on('error', (e) => setUpdate({ state: 'error', message: String(e?.message || e).slice(0, 120) }))
