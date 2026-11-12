@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, powerMonitor } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -115,9 +115,18 @@ app.whenReady().then(() => {
       })
       autoUpdater.on('error', (e) => setUpdate({ state: 'error', message: String(e?.message || e).slice(0, 120) }))
       ipcMain.on('update:install', () => { quitting = true; autoUpdater.quitAndInstall(true, true) })
-      autoUpdater.checkForUpdates()
-      // Also re-check hourly so an app left open for days still updates.
-      setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 60 * 60 * 1000)
+      // The app now lives in the tray and is rarely restarted, so look for updates on its own:
+      // at start, every 10 minutes, when the PC wakes from sleep, and when the window is brought up.
+      let lastCheck = 0
+      const check = () => {
+        if (['checking', 'downloading', 'ready'].includes(update.state) || Date.now() - lastCheck < 60 * 1000) return
+        lastCheck = Date.now()
+        autoUpdater.checkForUpdates().catch(() => {})
+      }
+      check()
+      setInterval(check, 10 * 60 * 1000)
+      powerMonitor.on('resume', () => setTimeout(check, 15 * 1000)) // give the network a moment to come back
+      app.on('browser-window-focus', check)
     } catch {}
   }
   app.on('activate', showWindow)
