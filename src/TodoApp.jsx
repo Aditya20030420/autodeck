@@ -447,7 +447,9 @@ export default function TodoApp() {
               { action: 'view', title: 'View' },
             ] })
           } else {
-            new Notification(title, opts)
+            const n = new Notification(title, opts)
+            // Clicking the toast brings the (possibly hidden-in-tray) window back.
+            n.onclick = () => window.autodeck?.showWindow?.()
           }
         })
       // One sound per tick, matched to the highest priority alerting now.
@@ -1910,6 +1912,10 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
   const recolor = (name, color) => setCategories(categories.map((c) => (c.name === name ? { ...c, color } : c)))
   const sel = 'rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50'
   const notifState = notify ? (muted ? 'Muted' : 'On') : 'Off'
+  // Desktop app only: keep running in the tray (and start with Windows) so reminders arrive while the window is closed.
+  const [bg, setBg] = useState(null)
+  useEffect(() => { window.autodeck?.getBackground?.().then(setBg).catch(() => {}) }, [])
+  const changeBg = (on) => { setBg(on); window.autodeck?.setBackground?.(on) }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1937,6 +1943,17 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
               {!notify ? 'Enable' : muted ? 'Unmute' : 'Mute'}
             </button>
           </div>
+
+          {/* Keep running when closed (desktop app) */}
+          {bg !== null && (
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Reminders when closed</div>
+                <div className="text-xs text-slate-400">Closing the window keeps AutoDeck in the tray, and it starts with Windows, so reminders still arrive. Quit from the tray icon.</div>
+              </div>
+              <Switch checked={bg} onChange={changeBg} label="Reminders when closed" />
+            </div>
+          )}
 
           {/* Sound on/off */}
           <div className="flex items-center justify-between gap-3">
