@@ -1,11 +1,10 @@
-name: Build Android APK
+name: Build Android APK (manual)
 
-# Pushing a tag like v1.0.23 builds AutoDeck-1.0.23.apk and attaches it to that release (next to the Windows installer).
-# "Run workflow" on the Actions page builds one too, kept as a downloadable artifact.
+# The APKs are built on the PC (npm run android:apk, with Android Studio's Java) and uploaded to each release by hand,
+# so this no longer runs when a version tag is pushed. It is kept as a fallback: "Run workflow" on the Actions page
+# builds one here, kept as a downloadable artifact.
 # Needs two repository secrets: ANDROID_KEYSTORE_BASE64 (the signing key, base64) and ANDROID_KEYSTORE_PASSWORD.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
