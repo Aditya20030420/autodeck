@@ -28,6 +28,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "ApkUpdate")
 public class ApkUpdatePlugin extends Plugin {
     private static final String API = "https://api.github.com/repos/Aditya20030420/autodeck/releases/latest";
+    private static final String PAGE = "https://github.com/Aditya20030420/autodeck/releases/latest";
 
     private File apkFile() {
         File dir = new File(getContext().getCacheDir(), "updates");
@@ -68,6 +69,23 @@ public class ApkUpdatePlugin extends Plugin {
     public void check(PluginCall call) {
         new Thread(() -> {
             try {
+                // Cheap first look, so a check every minute stays far below GitHub's API limit (60 an hour):
+                // the "latest release" page redirects to .../tag/vX.Y.Z. Only if that is newer is the API asked.
+                HttpURLConnection h = (HttpURLConnection) new URL(PAGE).openConnection();
+                h.setInstanceFollowRedirects(false);
+                h.setRequestMethod("HEAD");
+                h.setConnectTimeout(15000);
+                h.setReadTimeout(15000);
+                h.setRequestProperty("User-Agent", "AutoDeck-updater");
+                String loc = h.getHeaderField("Location");
+                if (loc != null && loc.contains("/tag/")
+                        && !newer(loc.substring(loc.lastIndexOf("/tag/") + 5).replaceFirst("^v", ""), current())) {
+                    JSObject same = new JSObject();
+                    same.put("current", current());
+                    same.put("available", false);
+                    call.resolve(same);
+                    return;
+                }
                 HttpURLConnection c = open(API);
                 StringBuilder body = new StringBuilder();
                 try (InputStream in = c.getInputStream()) {

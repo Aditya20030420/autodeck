@@ -11,8 +11,10 @@ export function startAndroidUpdates() {
   const subs = new Set()
   const set = (s) => { state = s; subs.forEach((f) => f(s)) }
 
-  const check = async () => {
+  let failedAt = 0
+  const check = async (fromTimer = false) => {
     if (busy || state.state === 'ready') return // a downloaded update waits for the user's tap
+    if (fromTimer && Date.now() - failedAt < 5 * 60000) return // offline or a bad download: don't retry every minute
     busy = true
     try {
       set({ state: 'checking' })
@@ -23,6 +25,7 @@ export function startAndroidUpdates() {
       await Apk.download({ url: r.url, sha256: r.sha256 })
       set({ state: 'ready', version: r.version, manual: true })
     } catch (e) {
+      failedAt = Date.now()
       set({ state: 'error', message: String(e?.message || e).slice(0, 120) }) // offline or rate-limited: try again later
     } finally {
       busy = false
@@ -36,6 +39,6 @@ export function startAndroidUpdates() {
     installUpdate: () => Apk.install(),
   }
   check()
-  setInterval(check, 6 * 3600 * 1000)
+  setInterval(() => check(true), 60 * 1000) // every minute while the app is open; opening the app also checks at once
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check() })
 }
