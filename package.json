@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:build": "vite build && electron-builder --win --publish never",
-    "gen-icon": "node scripts/gen-icon.mjs"
+    "gen-icon": "node scripts/gen-icon.mjs",
+    "android:apk": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1"
   },
   "build": {
     "appId": "com.autodeck.app",
