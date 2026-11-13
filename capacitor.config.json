@@ -2,5 +2,11 @@
   "appId": "com.autodeck.app",
   "appName": "AutoDeck",
   "webDir": "dist",
-  "backgroundColor": "#16304A"
+  "backgroundColor": "#16304A",
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_autodeck",
+      "iconColor": "#14B8A6"
+    }
+  }
 }

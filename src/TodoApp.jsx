@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
+import { isAndroid, androidNotifyGranted, androidRequestNotify, syncAndroidReminders, initAndroidReminders } from './androidReminders.js'
 import {
   Plus, Search, Check, Pencil, Trash2, CalendarArrowUp, Copy, Pin, PinOff,
   Bell, Sun, Moon, ListTodo, PartyPopper, Inbox, Coffee, CheckCircle2,
@@ -373,6 +374,13 @@ export default function TodoApp() {
   // Keep the notify indicator in sync with the real browser permission,
   // even when the user changes it outside the app (address bar, site settings).
   useEffect(() => {
+    if (isAndroid()) { // the Android app asks the OS (through the plugin), not the browser
+      const syncA = () => androidNotifyGranted().then(setNotify).catch(() => {})
+      syncA()
+      window.addEventListener('focus', syncA)
+      document.addEventListener('visibilitychange', syncA)
+      return () => { window.removeEventListener('focus', syncA); document.removeEventListener('visibilitychange', syncA) }
+    }
     if (typeof Notification === 'undefined') return
     const sync = () => setNotify(Notification.permission === 'granted')
     sync()
@@ -575,6 +583,15 @@ export default function TodoApp() {
     setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 2400)
   }, [])
 
+  // Android: keep the phone's alarm manager in step with the task list, so reminders fire with the app closed,
+  // and open the task when its notification is tapped.
+  useEffect(() => {
+    if (!isAndroid()) return
+    const id = setTimeout(() => syncAndroidReminders(tasks, notify && !muted), 400)
+    return () => clearTimeout(id)
+  }, [tasks, notify, muted])
+  useEffect(() => initAndroidReminders(viewTask), [viewTask])
+
   // Register the service worker (skipped on file:// — the desktop build falls
   // back to plain Notifications) and route notification-action clicks back here.
   useEffect(() => {
@@ -726,6 +743,17 @@ export default function TodoApp() {
 
   // Bell click: request permission if needed, otherwise mute/unmute in-app.
   const requestNotify = useCallback(async () => {
+    if (isAndroid()) {
+      if (notify) { // already allowed: the bell toggles the in-app mute
+        setMuted((m) => { setNotice({ text: m ? 'Notifications unmuted.' : 'Notifications muted.' }); return !m })
+        return
+      }
+      const ok = await androidRequestNotify().catch(() => false)
+      setNotify(ok)
+      if (ok) setMuted(false)
+      setNotice({ text: ok ? 'Notifications enabled.' : 'Notifications are off. Allow them for AutoDeck in the phone settings.' })
+      return
+    }
     if (typeof Notification === 'undefined') {
       setNotice({ text: "This browser doesn't support notifications." })
       return
@@ -743,7 +771,7 @@ export default function TodoApp() {
     setNotify(res === 'granted')
     if (res === 'granted') setMuted(false)
     setNotice({ text: res === 'granted' ? 'Notifications enabled.' : 'Notifications not enabled.' })
-  }, [setMuted])
+  }, [setMuted, notify])
 
   return (
     <div className="min-h-screen text-slate-900 dark:text-slate-100 transition-colors">

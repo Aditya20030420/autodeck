@@ -1,4 +1,4 @@
-# Builds the signed AutoDeck APK on this PC, with Android Studio's Java and the SDK installed on E:.
+﻿# Builds the signed AutoDeck APK on this PC, with Android Studio's Java and the SDK installed on E:.
 # Run: npm run android:apk      (about 1-7 minutes; the first run downloads Gradle's files)
 # Output: C:\Users\HP\Downloads\AutoDeck Android\AutoDeck-<version>.apk
 $ErrorActionPreference = 'Stop'
@@ -10,7 +10,7 @@ $ver = (Get-Content "$root\package.json" -Raw | ConvertFrom-Json).version
 $a, $b, $c = $ver.Split('.') | ForEach-Object { [int]$_ }
 $pw = ((Get-Content "$sign\README-keep-safe.txt" | Where-Object { $_ -like 'password:*' }) -replace '^password:\s*', '').Trim()
 
-$env:JAVA_HOME = 'E:\Android\android-studio\jbr'            # Android Studio's own Java (the project needs 21 or newer)
+$env:JAVA_HOME = 'E:\Android\jdk-21'                          # Java 21: Gradle here can't read Android Studio's Java 25
 $env:ANDROID_HOME = $env:ANDROID_SDK_ROOT = 'E:\Android\Sdk'
 $env:ANDROID_USER_HOME = 'E:\Android\.android'
 $env:GRADLE_USER_HOME = 'E:\Android\gradle-home'            # keeps Gradle's big caches off the C: drive
@@ -30,3 +30,4 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $apk = "$out\AutoDeck-$ver.apk"
 Copy-Item "$root\android\app\build\outputs\apk\release\app-release.apk" $apk -Force
 Write-Host "APK ready: $apk"
+

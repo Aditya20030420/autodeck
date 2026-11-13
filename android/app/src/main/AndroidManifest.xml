@@ -40,4 +40,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Lets the app hand its downloaded update to the Android installer -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Reminders fire at their exact time even with the app closed (granted at install from Android 13) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 </manifest>
