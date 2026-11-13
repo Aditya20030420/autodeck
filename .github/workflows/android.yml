@@ -1,0 +1,64 @@
+name: Build Android APK
+
+# Pushing a tag like v1.0.23 builds AutoDeck-1.0.23.apk and attaches it to that release (next to the Windows installer).
+# "Run workflow" on the Actions page builds one too, kept as a downloadable artifact.
+# Needs two repository secrets: ANDROID_KEYSTORE_BASE64 (the signing key, base64) and ANDROID_KEYSTORE_PASSWORD.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+
+      - name: Version from package.json
+        run: |
+          v=$(node -p "require('./package.json').version")
+          IFS=. read -r a b c <<< "$v"
+          echo "ANDROID_VERSION_NAME=$v" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=$((a * 10000 + b * 100 + c))" >> "$GITHUB_ENV"
+          echo "APK=AutoDeck-$v.apk" >> "$GITHUB_ENV"
+
+      - name: Signing key
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/autodeck.keystore"
+
+      - name: Build the APK
+        working-directory: android
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/autodeck.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: autodeck
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - run: cp android/app/build/outputs/apk/release/app-release.apk "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoDeck-apk
+          path: ${{ env.APK }}
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK }}

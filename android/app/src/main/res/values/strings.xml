@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AutoDeck</string>
+    <string name="title_activity_main">AutoDeck</string>
+    <string name="package_name">com.autodeck.app</string>
+    <string name="custom_url_scheme">com.autodeck.app</string>
+</resources>
