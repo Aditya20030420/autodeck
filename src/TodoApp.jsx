@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, Search, Check, Pencil, Trash2, CalendarArrowUp, Copy, Pin, PinOff,
   Bell, Sun, Moon, ListTodo, PartyPopper, Inbox, Coffee, CheckCircle2,
@@ -1007,6 +1007,36 @@ export default function TodoApp() {
   )
 }
 
+/* ------------------------------- Long titles ------------------------------- */
+/** A task title that shows two lines, with "more" / "less" to read the rest. Works by tap or click, so the same on
+ *  the desktop and Android apps. The cue only appears when the text really is cut. */
+function ClampText({ text, className = '', innerClass = '', onDoubleClick }) {
+  const ref = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [cut, setCut] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => { if (!open) setCut(el.scrollHeight > el.clientHeight + 1) }
+    measure()
+    const ro = new ResizeObserver(measure) // a resized window or rotated phone re-wraps the text
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [text, open])
+  return (
+    <span className={`flex-1 ${className}`} onDoubleClick={onDoubleClick}>
+      <span ref={ref} className={`break-words ${open ? 'block' : 'line-clamp-2'} ${innerClass}`}>{text}</span>
+      {(cut || open) && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o) }}
+          aria-expanded={open}
+          className="mt-0.5 text-[11px] font-semibold text-teal-600 hover:underline dark:text-teal-400">
+          {open ? 'less' : 'more'}
+        </button>
+      )}
+    </span>
+  )
+}
+
 /* ------------------------------ Update banner ------------------------------ */
 /** Desktop-app auto-update progress (window.autodeck is injected by electron/preload.cjs). */
 function UpdateBanner() {
@@ -1309,7 +1339,8 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
                         <button onClick={() => setOpenId(openId === x.id ? null : x.id)} aria-expanded={openId === x.id}
                           className="flex min-w-0 flex-1 items-center gap-2 text-left">
                           <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
-                          <span className={`min-w-0 flex-1 truncate text-xs ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
+                          {/* two lines; the tap that opens the details also shows the whole title */}
+                          <span className={`min-w-0 flex-1 break-words text-xs ${openId === x.id ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
                           {showDate && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{x.day.slice(5)}</span>}
                           {x.recur && <RotateCw size={10} className="shrink-0 text-teal-500" />}
                           {x.reminder && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{fmtTime(x.reminder.time)}</span>}
@@ -1612,9 +1643,10 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), c
       id={`task-${task.id}`}
       aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${reminderLabel(task.reminder)}.` : ''}${overdue ? ' Overdue.' : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
       style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: catColor(categories, task.category) }}
-      className={`glass-sm group animate-fade-up rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
+      className={`glass-sm group animate-fade-up relative rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
       highlight ? 'ring-2 ring-sky-500/70 soft-pulse' : task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
-      <div className="flex items-center gap-2">
+      {/* wraps: on a narrow screen the action buttons drop under the title instead of squeezing it to nothing */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {/* drag handle (pending list only) */}
         {handleProps && (
           <button {...handleProps} aria-label="Drag to reorder"
@@ -1648,15 +1680,11 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), c
               if (e.key === 'Enter') onRename(task.id, draft)
               if (e.key === 'Escape') onEdit(null)
             }}
-            className="flex-1 rounded-md border border-sky-500 bg-transparent px-1.5 py-0.5 text-sm outline-none"
+            className="min-w-[9rem] flex-1 rounded-md border border-sky-500 bg-transparent px-1.5 py-0.5 text-sm outline-none"
           />
         ) : (
-          <span
-            onDoubleClick={() => onEdit(task.id)}
-            className={`min-w-0 flex-1 truncate text-sm ${task.done ? 'text-slate-400' : ''}`}
-          >
-            <span className={task.done ? 'strike' : ''}>{task.text}</span>
-          </span>
+          <ClampText text={task.text} onDoubleClick={() => onEdit(task.id)}
+            className={`min-w-[9rem] text-sm ${task.done ? 'text-slate-400' : ''}`} innerClass={task.done ? 'strike' : ''} />
         )}
 
         {/* subtask progress chip (toggles the checklist) */}
@@ -1670,7 +1698,8 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), c
         )}
 
         {/* hover actions */}
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 transition group-hover:opacity-100 focus-within:opacity-100 md:opacity-0">
+        {/* wide screens: the buttons float over the row's corner on hover, so the title keeps the whole row */}
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 transition group-hover:opacity-100 focus-within:opacity-100 md:absolute md:right-2 md:top-2 md:ml-0 md:rounded-full md:bg-white/85 md:px-1 md:py-0.5 md:opacity-0 md:shadow-sm md:backdrop-blur dark:md:bg-slate-900/80">
           <CardAction title="Subtasks" onClick={() => setExpanded((v) => !v)}><ListTodo size={15} /></CardAction>
           <CardAction title={task.reminder ? 'Edit reminder' : 'Add reminder'} onClick={() => { setRemDraft(task.reminder || null); setRemOpen((v) => !v) }}>
             <Bell size={15} className={task.reminder ? 'text-sky-500' : ''} />
@@ -1718,7 +1747,7 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), c
                   s.done ? 'border-transparent bg-lime-500 text-white' : 'border-slate-300 hover:border-sky-500 dark:border-slate-600'}`}>
                 {s.done && <Check size={11} strokeWidth={3} />}
               </button>
-              <span className={`flex-1 truncate ${s.done ? 'text-slate-400' : ''}`}>
+              <span className={`min-w-0 flex-1 break-words ${s.done ? 'text-slate-400' : ''}`}>
                 <span className={s.done ? 'strike' : ''}>{s.text}</span>
               </span>
               <button onClick={() => onRemoveSubtask(task.id, s.id)} aria-label="Delete subtask"
@@ -1794,7 +1823,8 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, n
             <li key={task.id} style={{ borderLeftColor: ps.accent }}
               className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-xl border-l-[3px] bg-white/60 px-3 py-2 dark:bg-slate-900/40">
               <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
+              {/* a reminder shows the whole task, however long */}
+              <span className="min-w-0 flex-1 break-words text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
               {od > 0 && <span className="shrink-0 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300">OVERDUE {fmtDur(od)}</span>}
               <span className="hidden shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-500 sm:flex dark:text-slate-400">
                 <Bell size={10} /> {reminderLabel(task.reminder)}
@@ -1857,7 +1887,7 @@ function UpcomingReminders({ items, nowTick, onView, onCancel }) {
                 return (
                   <tr key={task.id} className="border-t border-black/5 dark:border-white/5">
                     <td className="py-2 pr-3">
-                      <button onClick={() => onView(task.id)} className="max-w-[160px] truncate text-left font-medium text-slate-700 hover:text-sky-600 dark:text-slate-200">{task.text}</button>
+                      <button onClick={() => onView(task.id)} className="max-w-[220px] break-words text-left font-medium text-slate-700 hover:text-sky-600 dark:text-slate-200">{task.text}</button>
                     </td>
                     <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span></td>
                     <td className="py-2 pr-3 tabular-nums text-slate-500 dark:text-slate-400">{r.date === todayStr() ? '' : r.date.slice(5) + ' '}{fmtTime(r.time)}</td>
