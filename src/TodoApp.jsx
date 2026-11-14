@@ -574,6 +574,20 @@ export default function TodoApp() {
     const until = x.reminder.repeat > 0 ? Date.now() + x.reminder.repeat * 60000 : DISMISSED
     return { ...x, reminder: { ...x.reminder, snoozeUntil: until } }
   }), [patch])
+  // The same two actions for many at once (the banner's "Snooze all" / "Dismiss all").
+  const snoozeAll = useCallback((ids, mins) => {
+    const set = new Set(ids)
+    setTasks((prev) => prev.map((x) => (set.has(x.id) && x.reminder
+      ? { ...x, reminder: { ...x.reminder, snoozeUntil: Date.now() + mins * 60000, lastAlert: null } } : x)))
+  }, [setTasks])
+  const dismissAll = useCallback((ids) => {
+    const set = new Set(ids)
+    setTasks((prev) => prev.map((x) => {
+      if (!set.has(x.id) || !x.reminder) return x
+      const until = x.reminder.repeat > 0 ? Date.now() + x.reminder.repeat * 60000 : DISMISSED
+      return { ...x, reminder: { ...x.reminder, snoozeUntil: until } }
+    }))
+  }, [setTasks])
   // Set/replace/clear a task's reminder (re-arms alerts).
   const editReminder = useCallback((id, reminder) => patch(id, (x) =>
     ({ ...x, reminder: reminder ? { ...reminder, lastAlert: null, snoozeUntil: null } : null })), [patch])
@@ -896,6 +910,7 @@ export default function TodoApp() {
         {dueReminders.length > 0 && (
           <ReminderBanner items={dueReminders} nowTick={nowTick}
             onDone={toggle} onSnooze={snoozeReminder} onDismiss={dismissReminder} onView={viewTask}
+            onSnoozeAll={snoozeAll} onDismissAll={dismissAll}
             notify={notify} muted={muted} />
         )}
 
@@ -1827,23 +1842,55 @@ const PRI_STYLE = {
   Low:    { wrap: 'border-slate-400/40 bg-slate-500/10 dark:bg-slate-500/[0.12]', text: 'text-slate-700 dark:text-slate-300', icon: 'text-slate-500', accent: '#94a3b8' },
 }
 
-function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, notify, muted }) {
+function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, onSnoozeAll, onDismissAll, notify, muted }) {
   const top = items[0].priority             // items are sorted priority-desc
   const s = PRI_STYLE[top]
+  const [collapsed, setCollapsed] = useState(false)
+  // A new reminder falling due opens a collapsed banner again, so it can't go unnoticed.
+  const prevCount = useRef(items.length)
+  useEffect(() => {
+    if (items.length > prevCount.current) setCollapsed(false)
+    prevCount.current = items.length
+  }, [items.length])
+  const many = items.length > 1
+  const ids = items.map((t) => t.id)
+  const pill = 'rounded-full bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-600 outline-none transition hover:bg-slate-500/20 dark:text-slate-300'
+  // Pinned to the top only while it is short: a tall one would cover the page it is meant to sit above.
+  const pinned = collapsed || items.length <= 3
   return (
-    <div className={`animate-fade-up sticky top-3 z-30 mb-6 rounded-2xl border p-3 shadow-soft backdrop-blur-md ${s.wrap}`}>
-      <div className="mb-2 flex items-center gap-2 px-1">
+    <div className={`animate-fade-up ${pinned ? 'sticky top-3' : ''} z-30 mb-6 rounded-2xl border p-3 shadow-soft backdrop-blur-md ${s.wrap}`}>
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 px-1 ${collapsed ? '' : 'mb-2'}`}>
         <Bell size={16} strokeWidth={2.4} className={`animate-bell ${s.icon}`} />
         <span className={`text-sm font-bold ${s.text}`}>
           {items.length} reminder{items.length === 1 ? '' : 's'} due
         </span>
-        {(!notify || muted) && (
-          <span className="ml-auto text-[11px] font-medium opacity-80">
+        {collapsed && <span className="min-w-0 flex-1 truncate text-xs text-slate-600 dark:text-slate-300">{items[0].text}</span>}
+        {!collapsed && (!notify || muted) && (
+          <span className="text-[11px] font-medium opacity-80">
             {muted ? 'Sound muted' : 'Enable notifications for desktop alerts'}
           </span>
         )}
+        <div className="ml-auto flex items-center gap-1.5">
+          {many && !collapsed && (
+            <>
+              <select aria-label="Snooze all" title="Snooze all of them" defaultValue=""
+                onChange={(e) => { if (e.target.value) { onSnoozeAll(ids, +e.target.value); e.target.value = '' } }}
+                className={pill}>
+                <option value="" disabled>Snooze all</option>
+                {SNOOZE_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <button onClick={() => onDismissAll(ids)} title="Dismiss all of them" className={pill}>Dismiss all</button>
+            </>
+          )}
+          <button onClick={() => setCollapsed((c) => !c)} aria-expanded={!collapsed}
+            title={collapsed ? 'Show the reminders' : 'Collapse to one line'}
+            className="flex items-center gap-1 rounded-full bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-500/20 dark:text-slate-300">
+            {collapsed ? 'Show' : 'Collapse'}
+            <ChevronDown size={12} className={`transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+          </button>
+        </div>
       </div>
-      <ul className="space-y-1.5">
+      {!collapsed && <ul className="max-h-[max(9rem,33vh)] space-y-1.5 overflow-y-auto pr-1">
         {items.map((task) => {
           const od = overdueMins(task.reminder, nowTick)
           const ps = PRI_STYLE[task.priority]
@@ -1875,7 +1922,7 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, n
             </li>
           )
         })}
-      </ul>
+      </ul>}
     </div>
   )
 }
