@@ -808,8 +808,8 @@ export default function TodoApp() {
         </div>
 
         {/* Header */}
-        <header className="mb-8 flex items-start justify-between">
-          <div className="animate-fade-in">
+        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div className="animate-fade-in min-w-0">
             <Clock />
             <h1 className="mt-1.5 text-4xl font-extrabold tracking-[-0.03em] text-slate-900 sm:text-5xl dark:text-white">
               {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -837,7 +837,7 @@ export default function TodoApp() {
               </div>
             )}
           </div>
-          <div className="glass flex items-center gap-0.5 rounded-full p-1 shadow-sm">
+          <div className="glass flex max-w-full items-center gap-0.5 rounded-full p-1 shadow-sm">
             <IconButton
               title={!notify ? 'Notifications off. Click to enable'
                 : muted ? 'Notifications muted. Click to unmute'
@@ -1602,8 +1602,8 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           onChange={(e) => setText(e.target.value)}
           placeholder="Try: Email Sam at 5pm #work !high"
           aria-label="New task"
-          autoFocus
-          className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
+          autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
+          className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
         />
         <button type="submit"
           className="group flex shrink-0 items-center gap-2 rounded-full bg-sky-600 py-2 pl-5 pr-2 text-sm font-semibold text-white transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-sky-500 active:scale-[0.98]">
