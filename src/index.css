@@ -168,3 +168,9 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
   .glow-pulse { animation: none; filter: drop-shadow(0 0 5px rgba(45,212,191,.7)); }
   body::before { animation: none; }
 }
+
+/* Android app only: behave like an app, not a web page (no blue tap flash, no text selecting or page bounce, no double-tap zoom) */
+.native, .native body { overscroll-behavior: none; }
+.native * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+.native body { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.native input, .native textarea, .native [contenteditable] { user-select: text; -webkit-user-select: text; }
