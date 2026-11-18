@@ -1,0 +1,11 @@
+# Weekly checks for out-of-date or vulnerable libraries and build actions; each one arrives as a pull request to review.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

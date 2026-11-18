@@ -61,6 +61,31 @@ function useLocalStorage(key, initial) {
   return [value, setValue]
 }
 
+/* A backup file is someone else's data until proven otherwise: keep only the fields the app knows, in the shapes it expects,
+   with sensible limits, so a damaged or hostile file can't crash the app or fill its storage. */
+const clip = (v, n) => (typeof v === 'string' ? v : '').slice(0, n)
+const isDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const fin = (v, d) => (Number.isFinite(v) ? v : d)
+function sanitizeImported(list) {
+  return list.slice(0, 5000).filter((x) => x && typeof x === 'object' && typeof x.text === 'string').map((x, i) => {
+    const r = x.reminder
+    const reminder = r && typeof r === 'object'
+      ? { date: isDay(r.date) ? r.date : todayStr(), time: /^\d{2}:\d{2}$/.test(String(r.time)) ? String(r.time) : '09:00',
+          lead: fin(r.lead, 0), repeat: fin(r.repeat, 0), lastAlert: fin(r.lastAlert, null), snoozeUntil: fin(r.snoozeUntil, null) }
+      : (typeof r === 'string' && /^\d{2}:\d{2}$/.test(r) ? r : null)
+    return {
+      id: clip(String(x.id ?? ''), 64) || crypto.randomUUID(),
+      text: clip(x.text, 2000), priority: PRIORITIES.includes(x.priority) ? x.priority : 'Medium',
+      category: clip(x.category, 60) || 'Personal', reminder, recur: ['daily', 'weekdays', 'weekly'].includes(x.recur) ? x.recur : null,
+      done: !!x.done, pinned: !!x.pinned, day: isDay(x.day) ? x.day : todayStr(),
+      createdAt: fin(x.createdAt, Date.now()), order: fin(x.order, i),
+      subtasks: Array.isArray(x.subtasks)
+        ? x.subtasks.slice(0, 200).filter((s) => s && typeof s === 'object').map((s) => ({ id: clip(String(s.id ?? ''), 64) || crypto.randomUUID(), text: clip(s.text, 500), done: !!s.done }))
+        : [],
+    }
+  })
+}
+
 function normalizeForToday(tasks) {
   const t = todayStr()
   return tasks
@@ -708,7 +733,8 @@ export default function TodoApp() {
   // prototype-pollution/ReDoS advisories, and we only ever export, never parse).
   const exportCSV = useCallback(() => {
     const cols = ['Task', 'Priority', 'Category', 'Status', 'Reminder', 'Subtasks']
-    const cell = (v) => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    // a task starting with = + - or @ would run as a formula when the CSV is opened in Excel: a leading ' makes it plain text
+    const cell = (v) => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
     const csv = [cols.join(','), ...exportRows().map((r) => cols.map((c) => cell(r[c])).join(','))].join('\r\n')
     download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), 'csv'); done('CSV')
   }, [exportRows, tasks])
@@ -741,13 +767,15 @@ export default function TodoApp() {
     download(new Blob([html], { type: 'application/msword' }), 'doc'); done('Word')
   }, [exportRows, tasks])
   const importTasks = useCallback((file) => {
+    if (file.size > 5 * 1024 * 1024) { setNotice({ text: 'Import failed: the file is too large to be a backup.' }); return }
     const reader = new FileReader()
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result)
         if (!Array.isArray(data)) throw new Error('not an array')
-        setTasks(normalizeForToday(data))
-        setNotice({ text: `Imported ${data.length} task${data.length === 1 ? '' : 's'}.` })
+        const clean = sanitizeImported(data)
+        setTasks(normalizeForToday(clean))
+        setNotice({ text: `Imported ${clean.length} task${clean.length === 1 ? '' : 's'}${clean.length < data.length ? ` (${data.length - clean.length} entries were not tasks and were skipped)` : ''}.` })
       } catch {
         setNotice({ text: 'Import failed: not a valid backup file.' })
       }

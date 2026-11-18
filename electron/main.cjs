@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, powerMonitor } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, powerMonitor, session } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -13,6 +13,11 @@ const applyAutostart = () => {
   if (!app.isPackaged) return // a dev run would register electron.exe itself
   app.setLoginItemSettings({ openAtLogin: prefs.background, args: ['--hidden'] })
 }
+
+// only real web addresses are ever handed to the operating system (never file:, ms-: or other program handlers)
+const openOutside = (url) => { try { if (['http:', 'https:'].includes(new URL(url).protocol)) shell.openExternal(url) } catch {} }
+// IPC calls are only answered for AutoDeck's own page, never for anything else that might get loaded
+const ownPage = (e) => { try { return new URL(e.senderFrame.url).protocol === 'file:' } catch { return false } }
 
 let win = null
 let tray = null
@@ -41,23 +46,23 @@ function createWindow(show = true) {
     title: 'AutoDeck',
     icon: path.join(__dirname, 'icon.png'),
     // The reminder timer must keep its 20 s beat while the window is hidden in the tray.
-    webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'preload.cjs'), backgroundThrottling: false },
+    webPreferences: {
+      contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, allowRunningInsecureContent: false,
+      webviewTag: false, preload: path.join(__dirname, 'preload.cjs'), backgroundThrottling: false,
+    },
   })
   win.once('ready-to-show', () => { if (show) win.show() })
 
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 
-  // open external links in the system browser, not inside the app window
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http')) { shell.openExternal(url); return { action: 'deny' } }
-    return { action: 'allow' }
-  })
+  // The app opens no windows of its own. A web address (http or https only) goes to the system browser; anything else is dropped.
+  win.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' } })
 
   // never let the app window navigate away from the bundled page
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== win.webContents.getURL()) {
       e.preventDefault()
-      if (url.startsWith('http')) shell.openExternal(url)
+      openOutside(url)
     }
   })
 
@@ -94,10 +99,14 @@ app.whenReady().then(() => {
   // ("electron.app.AutoDeck"), and a different id makes the running app a second taskbar button.
   loadPrefs()
   applyAutostart()
-  ipcMain.handle('update:get', () => update)
-  ipcMain.handle('bg:get', () => prefs.background)
-  ipcMain.handle('bg:set', (_e, on) => { prefs.background = !!on; savePrefs(); applyAutostart(); return prefs.background })
-  ipcMain.on('win:show', showWindow)
+  // The page may ask for notifications (reminders) and nothing else: no camera, microphone, location, USB and so on.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'notifications'))
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'notifications')
+  app.on('web-contents-created', (_e, contents) => { contents.on('will-attach-webview', (ev) => ev.preventDefault()) })
+  ipcMain.handle('update:get', (e) => (ownPage(e) ? update : null))
+  ipcMain.handle('bg:get', (e) => (ownPage(e) ? prefs.background : null))
+  ipcMain.handle('bg:set', (e, on) => { if (!ownPage(e)) return null; prefs.background = !!on; savePrefs(); applyAutostart(); return prefs.background })
+  ipcMain.on('win:show', (e) => { if (ownPage(e)) showWindow() })
   createWindow(!startHidden)
   createTray()
   // Auto-update from GitHub Releases (installed build only).
@@ -122,7 +131,7 @@ app.whenReady().then(() => {
         setTimeout(() => { quitting = true; autoUpdater.quitAndInstall(true, true) }, 5000)
       })
       autoUpdater.on('error', (e) => setUpdate({ state: 'error', message: String(e?.message || e).slice(0, 120) }))
-      ipcMain.on('update:install', () => { quitting = true; autoUpdater.quitAndInstall(true, true) })
+      ipcMain.on('update:install', (e) => { if (!ownPage(e)) return; quitting = true; autoUpdater.quitAndInstall(true, true) })
       // The app now lives in the tray and is rarely restarted, so look for updates on its own:
       // at start, every 10 minutes, when the PC wakes from sleep, and when the window is brought up.
       let lastCheck = 0

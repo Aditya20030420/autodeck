@@ -122,6 +122,11 @@ public class ApkUpdatePlugin extends Plugin {
     public void download(PluginCall call) {
         final String url = call.getString("url");
         final String want = call.getString("sha256", "");
+        // Only this project's own release files, over https: a page that has been tampered with can't point the updater elsewhere.
+        if (url == null || !url.startsWith("https://github.com/Aditya20030420/autodeck/releases/download/")) {
+            call.reject("That address is not one AutoDeck trusts.");
+            return;
+        }
         new Thread(() -> {
             File apk = apkFile();
             try {
