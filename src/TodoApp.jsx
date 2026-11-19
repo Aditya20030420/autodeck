@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo, Children, isValidElement } from 'react'
+import { createPortal } from 'react-dom'
 import { isAndroid, androidNotifyGranted, androidRequestNotify, syncAndroidReminders, initAndroidReminders } from './androidReminders.js'
 import {
   Plus, Search, Check, Pencil, Trash2, CalendarArrowUp, Copy, Pin, PinOff,
@@ -1179,13 +1180,13 @@ export default function TodoApp() {
         )}
 
         {/* View tabs: Tasks board vs Daily Report */}
-        <div className="glass mb-6 inline-flex gap-0.5 rounded-full p-1 shadow-sm">
+        <div className="glass mb-6 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full p-1 shadow-sm">
           {[['tasks', 'Tasks', ListTodo], ['week', 'Week', CalendarDays], ['report', 'Daily Report', ClipboardList], ['archive', 'Archive', ArchiveIcon]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setView(id)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-300 active:scale-[0.97] sm:px-4 ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all duration-300 active:scale-[0.97] sm:px-4 ${
                 view === id ? 'bg-teal-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
               }`}>
-              <Icon size={13} strokeWidth={2.2} /> {label}
+              <Icon size={13} strokeWidth={2.2} className="hidden sm:block" /> {id === 'report' ? <><span className="sm:hidden">Report</span><span className="hidden sm:inline">Daily Report</span></> : label}
               {id === 'archive' && archive.length > 0 && (
                 <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${view === id ? 'bg-white/25' : 'bg-slate-500/15'}`}>{archive.length}</span>
               )}
@@ -1760,10 +1761,10 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
             <span key={k} className="text-[11px] text-slate-400">{byReason[k]} {l.toLowerCase()}</span>
           ))}
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <select aria-label="Keep archived tasks" title="Old archived tasks are removed automatically" className={sel_} value={keepDays}
+            <Select label="Keep archived tasks" title="Old archived tasks are removed automatically" className={sel_} value={keepDays}
               onChange={(e) => setKeepDays(+e.target.value)}>
               {KEEP_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            </Select>
             <button onClick={exportCSV} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export CSV</button>
             <button onClick={exportJSON} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export JSON</button>
           </div>
@@ -1782,21 +1783,21 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
                 className="glass-sm w-full rounded-full py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <select aria-label="Why archived" className={sel_} value={reason} onChange={(e) => setReason(e.target.value)}>
+              <Select label="Why archived" className={sel_} value={reason} onChange={(e) => setReason(e.target.value)}>
                 <option value="all">Any reason</option>
                 {Object.entries(ARCHIVE_REASONS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select>
-              <select aria-label="Category" className={sel_} value={cat} onChange={(e) => setCat(e.target.value)}>
+              </Select>
+              <Select label="Category" className={sel_} value={cat} onChange={(e) => setCat(e.target.value)}>
                 <option value="all">Any category</option>
                 {catNames.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <select aria-label="Priority" className={sel_} value={pri} onChange={(e) => setPri(e.target.value)}>
+              </Select>
+              <Select label="Priority" className={sel_} value={pri} onChange={(e) => setPri(e.target.value)}>
                 <option value="all">Any priority</option>
                 {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <select aria-label="Sort" className={sel_} value={sort} onChange={(e) => setSort(e.target.value)}>
+              </Select>
+              <Select label="Sort" className={sel_} value={sort} onChange={(e) => setSort(e.target.value)}>
                 {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
               <label className="flex items-center gap-1 text-[11px] text-slate-400">From
                 <input type="date" aria-label="Archived from" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={sel_} /></label>
               <label className="flex items-center gap-1 text-[11px] text-slate-400">To
@@ -2014,12 +2015,12 @@ function SubOptions({ value, onChange, categories, task, remDefaults, remKey = 0
       <ChipSelect label="Subtask priority" value={prio} onChange={(e) => onChange({ priority: e.target.value })}
         lead={<span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_DOT[prio || task.priority] || PRIORITY_DOT.Medium}`} />}>
         <option value="">Same priority</option>
-        {PRIORITIES.map((p) => <option key={p} value={p}>{p} priority</option>)}
+        {PRIORITIES.map((p) => <option key={p} value={p} dotClass={PRIORITY_DOT[p]}>{p} priority</option>)}
       </ChipSelect>
       <ChipSelect label="Subtask category" value={cat} onChange={(e) => onChange({ category: e.target.value })}
         lead={<span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor(categories, cat || task.category) }} />}>
         <option value="">Same category</option>
-        {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+        {categories.map((c) => <option key={c.name} value={c.name} dotColor={c.color}>{c.name}</option>)}
       </ChipSelect>
       <ChipSelect label="Subtask repeat" value={value.recur || ''} onChange={(e) => onChange({ recur: e.target.value })} lead={<RotateCw size={13} strokeWidth={2.2} />}>
         {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
@@ -2046,17 +2047,137 @@ function SubChips({ st, categories, nowTick = Date.now() }) {
     </span>
   )
 }
+/* ------------------------------- Dropdowns --------------------------------- */
+/** A drop-in replacement for the native dropdown with a styled list: same <option> children, onChange gets { target: { value } }.
+    The list opens under the button (above it when there is no room), works with the mouse, touch and keyboard (arrows, Home,
+    End, Enter, Escape, type a letter to jump), shows a tick on the chosen entry, and an option may carry a colour dot
+    (dotClass for a Tailwind background class, dotColor for a hex colour). An empty disabled option is the placeholder. */
+let selectIds = 0
+function Select({ value, onChange, label, title, className = '', lead, disabled, children }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 0 })
+  const btn = useRef(null)
+  const list = useRef(null)
+  const typed = useRef({ text: '', at: 0 })
+  const id = useRef(`sel-${++selectIds}`).current
+
+  const all = Children.toArray(children).filter((c) => isValidElement(c) && c.type === 'option').map((c) => ({
+    value: String(c.props.value ?? ''), label: Children.toArray(c.props.children).join(''), disabled: !!c.props.disabled,
+    dotClass: c.props.dotClass, dotColor: c.props.dotColor,
+  }))
+  const chosen = all.find((o) => o.value === String(value ?? ''))
+  const shown = all.filter((o) => !(o.value === '' && o.disabled))  // the placeholder is only the button's text, not a choice
+
+  const close = useCallback(() => setOpen(false), [])
+  const openList = () => {
+    if (disabled) return
+    const r = btn.current.getBoundingClientRect()
+    setPos({ left: r.left, top: r.bottom + 6, minWidth: r.width, bottom: r.top - 6 })
+    const i = shown.findIndex((o) => o.value === String(value ?? ''))
+    setActive(i >= 0 ? i : shown.findIndex((o) => !o.disabled))
+    setOpen(true)
+  }
+  const pick = (o) => {
+    if (!o || o.disabled) return
+    onChange?.({ target: { value: o.value } })
+    close()
+    btn.current?.focus()
+  }
+
+  // place the list once it exists: keep it on screen, and flip above the button when there is no room below
+  useLayoutEffect(() => {
+    if (!open || !list.current) return
+    const h = list.current.offsetHeight, w = list.current.offsetWidth
+    setPos((p) => {
+      let { left, top } = p
+      if (top + h > window.innerHeight - 8 && p.bottom - h > 8) top = p.bottom - h
+      else if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - h)
+      if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w)
+      return top === p.top && left === p.left ? p : { ...p, left, top }
+    })
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const away = (e) => { if (!list.current?.contains(e.target) && !btn.current?.contains(e.target)) close() }
+    const moved = (e) => { if (!list.current?.contains(e.target)) close() }  // scrolling the page under an open list closes it
+    document.addEventListener('pointerdown', away)
+    window.addEventListener('scroll', moved, true)
+    window.addEventListener('resize', close)
+    return () => { document.removeEventListener('pointerdown', away); window.removeEventListener('scroll', moved, true); window.removeEventListener('resize', close) }
+  }, [open, close])
+
+  useEffect(() => { if (open) list.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }) }, [open, active])
+
+  const step = (dir) => {
+    let i = active
+    for (let n = 0; n < shown.length; n++) { i = (i + dir + shown.length) % shown.length; if (!shown[i].disabled) break }
+    setActive(i)
+  }
+  const onKeyDown = (e) => {
+    if (disabled) return
+    if (!open) {
+      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); openList() }
+      return
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); step(1) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1) }
+    else if (e.key === 'Home') { e.preventDefault(); setActive(shown.findIndex((o) => !o.disabled)) }
+    else if (e.key === 'End') { e.preventDefault(); setActive(shown.length - 1 - [...shown].reverse().findIndex((o) => !o.disabled)) }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(shown[active]) }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() }  // closes the list only, not a dialog behind it
+    else if (e.key === 'Tab') close()
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {  // type a few letters to jump to an entry
+      const now = Date.now()
+      typed.current = { text: (now - typed.current.at < 700 ? typed.current.text : '') + e.key.toLowerCase(), at: now }
+      const i = shown.findIndex((o) => !o.disabled && o.label.toLowerCase().startsWith(typed.current.text))
+      if (i >= 0) setActive(i)
+    }
+  }
+
+  return (
+    <>
+      <button ref={btn} type="button" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? id : undefined}
+        aria-activedescendant={open ? `${id}-${active}` : undefined} aria-label={label} title={title || label} disabled={disabled}
+        onClick={() => (open ? close() : openList())} onKeyDown={onKeyDown}
+        className={`${className} relative inline-flex min-w-0 cursor-pointer items-center text-left disabled:cursor-default disabled:opacity-50 ${lead ? 'pl-8' : ''} pr-8`}>
+        {lead && <span className="pointer-events-none absolute left-3 flex items-center text-slate-500 dark:text-slate-400">{lead}</span>}
+        <span className="truncate">{chosen ? chosen.label : ''}</span>
+        <ChevronDown size={13} className={`pointer-events-none absolute right-3 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && createPortal(
+        <ul ref={list} id={id} role="listbox" aria-label={label}
+          style={{ left: pos.left, top: pos.top, minWidth: Math.max(pos.minWidth, 150), maxWidth: 'calc(100vw - 16px)' }}
+          className="animate-fade-up fixed z-[70] max-h-72 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-1 text-sm shadow-soft backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95">
+          {shown.map((o, i) => {
+            const sel = o.value === String(value ?? '')
+            return (
+              <li key={o.value + i} id={`${id}-${i}`} role="option" aria-selected={sel} aria-disabled={o.disabled || undefined} data-active={i === active}
+                onPointerDown={(e) => e.preventDefault()} /* keep the button focused so the keyboard keeps working */
+                onMouseEnter={() => !o.disabled && setActive(i)} onClick={() => pick(o)}
+                className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 transition-colors ${o.disabled ? 'cursor-default opacity-40' : ''} ${
+                  i === active && !o.disabled ? 'bg-sky-500/10 dark:bg-sky-400/10' : ''} ${sel ? 'font-semibold text-sky-700 dark:text-sky-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                {(o.dotClass || o.dotColor) && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${o.dotClass || ''}`} style={o.dotColor ? { backgroundColor: o.dotColor } : undefined} />}
+                <span className="min-w-0 flex-1 whitespace-nowrap">{o.label}</span>
+                {sel && <Check size={14} strokeWidth={2.6} className="shrink-0" />}
+              </li>
+            )
+          })}
+        </ul>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 /** A pill-shaped dropdown with a small icon or colour dot in front. */
 function ChipSelect({ lead, label, value, onChange, children }) {
   return (
-    <label className="relative inline-flex items-center">
-      <span className="pointer-events-none absolute left-3 flex items-center text-slate-500 dark:text-slate-400">{lead}</span>
-      <select aria-label={label} title={label} value={value} onChange={onChange}
-        className={`${CHIP_BASE} cursor-pointer appearance-none pl-8 pr-8 hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20`}>
-        {children}
-      </select>
-      <ChevronDown size={13} className="pointer-events-none absolute right-3 text-slate-400" />
-    </label>
+    <Select lead={lead} label={label} value={value} onChange={onChange}
+      className={`${CHIP_BASE} hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20`}>
+      {children}
+    </Select>
   )
 }
 const inPreset = (opts, v) => opts.some(([, x]) => x === v)
@@ -2089,19 +2210,19 @@ function ReminderEditor({ initial, onChange, defaults }) {
         <>
           <input type="date" value={date} min={todayStr()} onChange={(e) => setDate(e.target.value)} aria-label="Reminder date" className={REM_CLS} />
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Reminder time" className={REM_CLS} />
-          <select aria-label="Lead time" title="Alert this long before the time" className={REM_CLS}
+          <Select label="Lead time" title="Alert this long before the time" className={REM_CLS}
             value={leadCustom ? 'custom' : lead}
             onChange={(e) => { if (e.target.value === 'custom') setLeadCustom(true); else { setLeadCustom(false); setLead(+e.target.value) } }}>
             {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
             <option value="custom">Custom…</option>
-          </select>
+          </Select>
           {leadCustom && <input type="number" min="1" value={lead} onChange={(e) => setLead(e.target.value)} aria-label="Custom minutes before" title="Minutes before" className={`${REM_CLS} w-24`} placeholder="min" />}
-          <select aria-label="Repeat interval" title="Repeat until the task is done" className={REM_CLS}
+          <Select label="Repeat interval" title="Repeat until the task is done" className={REM_CLS}
             value={repeatCustom ? 'custom' : repeat}
             onChange={(e) => { if (e.target.value === 'custom') setRepeatCustom(true); else { setRepeatCustom(false); setRepeat(+e.target.value) } }}>
             {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
             <option value="custom">Custom…</option>
-          </select>
+          </Select>
           {repeatCustom && <input type="number" min="1" value={repeat} onChange={(e) => setRepeat(e.target.value)} aria-label="Custom repeat minutes" title="Repeat every N minutes" className={`${REM_CLS} w-24`} placeholder="min" />}
         </>
       )}
@@ -2191,10 +2312,10 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
           lead={<span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_DOT[priority]}`} />}>
-          {PRIORITIES.map((p) => <option key={p} value={p}>{p} priority</option>)}
+          {PRIORITIES.map((p) => <option key={p} value={p} dotClass={PRIORITY_DOT[p]}>{p} priority</option>)}
         </ChipSelect>
         <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} lead={catDot(category)}>
-          {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+          {categories.map((c) => <option key={c.name} value={c.name} dotColor={c.color}>{c.name}</option>)}
         </ChipSelect>
         <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
           {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
@@ -2539,12 +2660,12 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, o
         <div className="ml-auto flex items-center gap-1.5">
           {many && !collapsed && (
             <>
-              <select aria-label="Snooze all" title="Snooze all of them" defaultValue=""
+              <Select label="Snooze all" title="Snooze all of them" value=""
                 onChange={(e) => { if (e.target.value) { onSnoozeAll(ids, +e.target.value); e.target.value = '' } }}
                 className={pill}>
                 <option value="" disabled>Snooze all</option>
                 {SNOOZE_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
               <button onClick={() => onDismissAll(ids)} title="Dismiss all of them" className={pill}>Dismiss all</button>
             </>
           )}
@@ -2574,12 +2695,12 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, o
               <div className="flex shrink-0 items-center gap-1">
                 <button onClick={() => onDone(task.id)} title="Mark completed"
                   className="rounded-full bg-lime-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-lime-600 active:scale-95">Done</button>
-                <select aria-label="Snooze" title="Snooze" defaultValue=""
+                <Select label="Snooze" title="Snooze" value=""
                   onChange={(e) => { if (e.target.value) { onSnooze(task.id, +e.target.value); e.target.value = '' } }}
                   className="rounded-full bg-slate-500/10 px-2 py-1 text-xs font-semibold text-slate-600 outline-none dark:text-slate-300">
                   <option value="" disabled>Snooze</option>
                   {SNOOZE_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                </Select>
                 <button onClick={() => onView(task.id)} title="View task"
                   className="rounded-full p-1.5 text-slate-500 transition hover:bg-black/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10"><Search size={13} /></button>
                 <button onClick={() => onDismiss(task.id)} title={task.reminder.repeat ? 'Dismiss (returns next interval)' : 'Dismiss'}
@@ -2766,17 +2887,17 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
             <div className="flex flex-wrap gap-2">
               <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 Lead
-                <select className={sel} value={remDefaults.lead}
+                <Select label="Default lead time" className={sel} value={remDefaults.lead}
                   onChange={(e) => setRemDefaults({ ...remDefaults, lead: +e.target.value })}>
                   {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                </Select>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 Repeat
-                <select className={sel} value={remDefaults.repeat}
+                <Select label="Default repeat" className={sel} value={remDefaults.repeat}
                   onChange={(e) => setRemDefaults({ ...remDefaults, repeat: +e.target.value })}>
                   {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                </Select>
               </label>
             </div>
             <p className="mt-2 text-xs text-slate-400">Pre-fills the reminder fields when you add a task.</p>
