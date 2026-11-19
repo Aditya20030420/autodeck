@@ -7,7 +7,7 @@ import {
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
-  Archive as ArchiveIcon, ArchiveRestore, SignalLow, SignalMedium, SignalHigh, Tag, TriangleAlert, House,
+  Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -398,11 +398,17 @@ const PRIORITY_BADGE = {
   High: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
 }
 // Symbols instead of plain dots: signal bars for priority, a fitting icon for each category (a tag for ones you add yourself)
-const PRIORITY_ICON = { Low: SignalLow, Medium: SignalMedium, High: SignalHigh }
-const PRIORITY_TEXT = { Low: 'text-slate-400', Medium: 'text-amber-500', High: 'text-rose-500' }
+const PRIORITY_LEVEL = { Low: 1, Medium: 2, High: 3 }
+const PRIORITY_HEX = { Low: '#94a3b8', Medium: '#f59e0b', High: '#f43f5e' }
+/** Three rising bars, filled up to the priority (one, two or three), the rest left faint. */
 function PriorityIcon({ p, size = 16 }) {
-  const I = PRIORITY_ICON[p] || SignalMedium
-  return <I size={size} strokeWidth={2.4} className={PRIORITY_TEXT[p] || PRIORITY_TEXT.Medium} aria-hidden="true" />
+  const level = PRIORITY_LEVEL[p] || 2
+  const colour = PRIORITY_HEX[p] || PRIORITY_HEX.Medium
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
+      {[0, 1, 2].map((i) => <rect key={i} x={1.5 + i * 5} y={14 - (i + 1) * 4} width="3.5" height={(i + 1) * 4} rx="1.2" fill={colour} opacity={i < level ? 1 : 0.25} />)}
+    </svg>
+  )
 }
 const PRIORITY_TINT = { Low: 'bg-slate-500/15', Medium: 'bg-amber-500/15', High: 'bg-rose-500/15' }
 /** The priority symbol in a small rounded tile (cards, banner, week view, archive). */
@@ -2095,7 +2101,7 @@ function SubChips({ st, categories, nowTick = Date.now() }) {
     End, Enter, Escape, type a letter to jump), shows a tick on the chosen entry, and an option may carry a colour dot
     (dotClass for a Tailwind background class, dotColor for a hex colour). An empty disabled option is the placeholder. */
 let selectIds = 0
-function Select({ value, onChange, label, title, className = '', lead, disabled, children }) {
+function Select({ value, onChange, label, title, className = '', style, lead, disabled, children }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 0 })
@@ -2181,7 +2187,7 @@ function Select({ value, onChange, label, title, className = '', lead, disabled,
   return (
     <>
       <button ref={btn} type="button" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? id : undefined}
-        aria-activedescendant={open ? `${id}-${active}` : undefined} aria-label={label} title={title || label} disabled={disabled}
+        aria-activedescendant={open ? `${id}-${active}` : undefined} aria-label={label} title={title || label} disabled={disabled} style={style}
         onClick={() => (open ? close() : openList())} onKeyDown={onKeyDown}
         className={`${className} relative inline-flex min-w-0 cursor-pointer items-center text-left disabled:cursor-default disabled:opacity-50 ${lead ? 'pl-8' : ''} pr-8`}>
         {lead && <span className="pointer-events-none absolute left-3 flex items-center text-slate-500 dark:text-slate-400">{lead}</span>}
@@ -2215,9 +2221,10 @@ function Select({ value, onChange, label, title, className = '', lead, disabled,
 }
 
 /** A pill-shaped dropdown with a small icon or colour dot in front. */
-function ChipSelect({ lead, label, value, onChange, children }) {
+function ChipSelect({ lead, label, value, onChange, tint, children }) {
   return (
     <Select lead={lead} label={label} value={value} onChange={onChange}
+      style={tint ? { borderColor: `${tint}59`, backgroundColor: `${tint}1f` } : undefined}  /* a soft wash of the chosen colour */
       className={`${CHIP_BASE} hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20`}>
       {children}
     </Select>
@@ -2288,6 +2295,27 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
   const [editSub, setEditSub] = useState(null) // index of a listed step whose options are open
   const [subsOpen, setSubsOpen] = useState(false)
   const subRef = useRef(null)
+  const taskRef = useRef(null)
+
+  // Press N anywhere (outside a text box or dialog) to start a new task
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key.toLowerCase() !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+      if (document.querySelector('[role=dialog], [role=listbox]')) return
+      e.preventDefault()
+      taskRef.current?.focus()
+      taskRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  // a tap on a quick-add hint types it into the box
+  const insertToken = (tok) => {
+    setText((t) => `${t && !/\s$/.test(t) ? `${t} ` : t}${tok} `)
+    taskRef.current?.focus()
+  }
 
   // Keep the selected category valid if the list changes (e.g. deleted in settings).
   useEffect(() => { if (!categories.some((c) => c.name === category)) setCategory(categories[0]?.name || '') }, [categories, category])
@@ -2335,16 +2363,20 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
     <form onSubmit={submit}
       className="glass mb-5 rounded-[1.75rem] p-5">
       <div className="flex items-center gap-3">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Try: Email Sam at 5pm #work !high"
-          aria-label="New task" maxLength={2000}
-          autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
-          className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
-        />
+        <div className="relative min-w-0 flex-1">
+          <Sparkles size={16} strokeWidth={2.2} className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${text ? 'text-sky-500' : 'text-slate-400'}`} aria-hidden="true" />
+          <input
+            ref={taskRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Try: Email Sam at 5pm #work !high"
+            aria-label="New task" maxLength={2000} title="Add a task. Press N anywhere to jump here"
+            autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
+            className="w-full rounded-full border border-slate-200 bg-slate-50 py-3 pl-11 pr-5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
+          />
+        </div>
         <button type="submit" title="Add task (Enter)"
-          className="group flex shrink-0 items-center gap-2 rounded-full bg-sky-600 py-2.5 pl-5 pr-2.5 text-sm font-semibold text-white transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-sky-500 active:scale-[0.98]">
+          className={`group flex shrink-0 items-center gap-2 rounded-full bg-sky-600 py-2.5 pl-5 pr-2.5 text-sm font-semibold text-white transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-sky-500 active:scale-[0.98] ${text.trim() ? 'shadow-lg shadow-sky-600/30' : 'opacity-70'}`}>
           Add
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
             <Plus size={15} strokeWidth={2} />
@@ -2354,10 +2386,10 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
-          lead={<PriorityIcon p={priority} />}>
+          tint={PRIORITY_HEX[priority]} lead={<PriorityIcon p={priority} />}>
           {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} />}>{p} priority</option>)}
         </ChipSelect>
-        <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} lead={catDot(category)}>
+        <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} tint={catColor(categories, category)} lead={catDot(category)}>
           {categories.map((c) => <option key={c.name} value={c.name} icon={<CategoryIcon name={c.name} color={c.color} />}>{c.name}</option>)}
         </ChipSelect>
         <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
@@ -2421,6 +2453,18 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
             <SubOptions value={subOpts} onChange={(f) => setSubOpts((o) => ({ ...o, ...f }))} categories={categories} task={{ priority, category }}
               remDefaults={remDefaults} remKey={`n${subOptsKey}`} />
           </div>
+        </div>
+      )}
+
+      {/* hints for the quick-add shortcuts while the box is empty; a tap types them in */}
+      {(!parsed || !parsed.text) && (  /* empty, or only shortcuts typed so far */
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+          <span>Quick add:</span>
+          {[...categories.filter((c) => /^\w+$/.test(c.name)).slice(0, 2).map((c) => `#${c.name.toLowerCase()}`), '!high', 'at 5pm', 'tomorrow'].map((tok) => (
+            <button key={tok} type="button" onClick={() => insertToken(tok)}
+              className="rounded-full bg-slate-500/10 px-2 py-0.5 font-semibold text-slate-500 transition hover:bg-sky-500/15 hover:text-sky-600 active:scale-95 dark:text-slate-400 dark:hover:text-sky-300">{tok}</button>
+          ))}
+          <span className="ml-auto hidden items-center gap-1 sm:flex">Press <kbd className="rounded border border-slate-300/60 px-1 font-sans font-semibold dark:border-slate-600">N</kbd> anywhere to add</span>
         </div>
       )}
 
