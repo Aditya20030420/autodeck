@@ -961,7 +961,8 @@ export default function TodoApp() {
 
   return (
     <div className="min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
-      <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
+      {/* the page grows with the window instead of staying a narrow strip in the middle of a wide screen */}
+      <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16 lg:max-w-6xl lg:px-8 xl:max-w-7xl 2xl:max-w-[96rem]">
 
         <UpdateBanner />
 
