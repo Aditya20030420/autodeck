@@ -79,6 +79,24 @@ const clip = (v, n) => (typeof v === 'string' ? v : '').slice(0, n)
 const isTime = (v) => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)
 const isDay = (v) =>typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const fin = (v, d) => (Number.isFinite(v) ? v : d)
+const RECURS = ['daily', 'weekdays', 'weekly']
+function cleanReminder(r) {
+  return r && typeof r === 'object'
+    ? { date: isDay(r.date) ? r.date : todayStr(), time: isTime(r.time) ? r.time : '09:00',
+        lead: Math.max(0, fin(r.lead, 0)), repeat: Math.max(0, fin(r.repeat, 0)), lastAlert: fin(r.lastAlert, null), snoozeUntil: fin(r.snoozeUntil, null) }
+    : null
+}
+/** A subtask as read from storage: text and done as always, plus an optional own priority, category, repeat, reminder and day. */
+function cleanSubtask(s) {
+  const out = { id: clip(String(s.id ?? ''), 64) || crypto.randomUUID(), text: clip(s.text, 500), done: !!s.done }
+  if (PRIORITIES.includes(s.priority)) out.priority = s.priority
+  if (typeof s.category === 'string' && s.category) out.category = clip(s.category, 60)
+  if (RECURS.includes(s.recur)) out.recur = s.recur
+  const rem = cleanReminder(s.reminder)
+  if (rem) out.reminder = rem
+  if (isDay(s.day)) out.day = s.day
+  return out
+}
 function sanitizeImported(list) {
   return list.slice(0, 5000).filter((x) => x && typeof x === 'object' && typeof x.text === 'string').map((x, i) => {
     const r = x.reminder
@@ -93,7 +111,7 @@ function sanitizeImported(list) {
       done: !!x.done, pinned: !!x.pinned, day: isDay(x.day) ? x.day : todayStr(),
       createdAt: fin(x.createdAt, Date.now()), order: fin(x.order, i),
       subtasks: Array.isArray(x.subtasks)
-        ? x.subtasks.slice(0, 200).filter((s) => s && typeof s === 'object').map((s) => ({ id: clip(String(s.id ?? ''), 64) || crypto.randomUUID(), text: clip(s.text, 500), done: !!s.done }))
+        ? x.subtasks.slice(0, 200).filter((s) => s && typeof s === 'object').map(cleanSubtask)
         : [],
     }
   })
@@ -114,7 +132,69 @@ function revivedTask(a, order) {
   if (reminder && task.recur) reminder = { ...reminder, date: todayStr(), lastAlert: null, snoozeUntil: null }
   else if (reminder && reminderEventTime(reminder).getTime() <= Date.now()) reminder = null
   else if (reminder) reminder = { ...reminder, lastAlert: null, snoozeUntil: null }
-  return { ...task, day: todayStr(), done: false, pinned: false, order, reminder }
+  const subtasks = (task.subtasks || []).map((st) => {
+    if (!st.reminder) return st
+    if (st.recur) return { ...st, reminder: { ...st.reminder, date: todayStr(), lastAlert: null, snoozeUntil: null } }
+    if (reminderEventTime(st.reminder).getTime() <= Date.now()) { const { reminder: gone, ...rest } = st; return rest } // eslint-disable-line no-unused-vars
+    return { ...st, reminder: { ...st.reminder, lastAlert: null, snoozeUntil: null } }
+  })
+  return { ...task, subtasks, day: todayStr(), done: false, pinned: false, order, reminder }
+}
+
+/* Every reminder in the app as one flat list: a task's own, plus those of its subtasks. A subtask reminder is presented as
+   a task-like item (its own id, "step (in task)" as the text, its own or the task's priority), so alerts, snoozes, the banner
+   and the Android alarms handle both the same way. */
+function subItem(task, st) {
+  return { id: st.id, text: `${st.text} (in ${task.text})`, priority: st.priority || task.priority, category: st.category || task.category,
+    done: !!(st.done || task.done), reminder: st.reminder, recur: st.recur || null, day: st.day || task.day, pinned: false, subtasks: [], subOf: task.id }
+}
+function reminderItems(tasks) {
+  const out = []
+  for (const x of tasks) {
+    if (x.reminder) out.push(x)
+    for (const st of x.subtasks || []) if (st.reminder) out.push(subItem(x, st))
+  }
+  return out
+}
+/** Apply `fn` to the tasks or subtasks whose ids are in `ids`. For a subtask, fn sees (and may change) its item's reminder/done. */
+function patchItems(tasks, ids, fn) {
+  return tasks.map((x) => {
+    let y = ids.has(x.id) ? fn(x) : x
+    if ((x.subtasks || []).some((st) => ids.has(st.id))) {
+      y = { ...y, subtasks: y.subtasks.map((st) => {
+        if (!ids.has(st.id)) return st
+        const item = subItem(x, st)
+        const r = fn(item)
+        return { ...st, done: r.done !== item.done ? r.done : st.done, reminder: r.reminder === undefined ? st.reminder : r.reminder }
+      }) }
+    }
+    return y
+  })
+}
+/** "[x] Send notes (High, Work, daily, 17:00)": a step with the options it has of its own, for the exports. */
+const subLine = (st) => {
+  const own = [st.priority, st.category, st.recur, st.reminder && st.reminder.time].filter(Boolean).join(', ')
+  return `${st.done ? '[x]' : '[ ]'} ${st.text}${own ? ` (${own})` : ''}`
+}
+/** A new step with the options it was given (priority, category, repeat, reminder); anything left empty follows the task. */
+function newSubtask(d) {
+  return applySubFields({ id: crypto.randomUUID(), text: d.text, done: false, day: todayStr() }, d)
+}
+function applySubFields(st, f) {
+  const out = { ...st }
+  if ('priority' in f) { if (PRIORITIES.includes(f.priority)) out.priority = f.priority; else delete out.priority }
+  if ('category' in f) { if (f.category) out.category = f.category; else delete out.category }
+  if ('recur' in f) { if (RECURS.includes(f.recur)) out.recur = f.recur; else delete out.recur }
+  if ('reminder' in f) { if (f.reminder) out.reminder = { ...f.reminder, lastAlert: null, snoozeUntil: null }; else delete out.reminder }
+  return out
+}
+/** A repeating subtask starts over on its next matching day, like a repeating task. */
+function normSub(st, task, t) {
+  if (!st.recur) return st
+  const d = st.day || task.day || t
+  if (d >= t) return st
+  const next = nextOccurrence(st.recur, new Date(), new Date(`${d}T00:00`).getDay())
+  return { ...st, done: false, day: next, reminder: st.reminder ? { ...st.reminder, date: next, lastAlert: null, snoozeUntil: null } : st.reminder }
 }
 
 /* Tasks as read from storage: known fields only, and old-style reminders upgraded, so the first screen can't crash on them. */
@@ -133,6 +213,7 @@ function normalizeForToday(tasks) {
         // Migrate legacy 'HH:MM' string reminders → object; keep future-dated ones as-is.
         reminder: migrateReminder(x.reminder),
       }
+      base.subtasks = (base.subtasks || []).map((st) => normSub(st, x, t))
       if (x.day === t) return base
       // A recurring task re-spawns fresh (undone) on its next matching day.
       if (x.recur) {
@@ -495,6 +576,7 @@ export default function TodoApp() {
   }, [setArchive])
   const tasksRef = useRef(tasks)
   tasksRef.current = tasks
+  const items = useMemo(() => reminderItems(tasks), [tasks])  // every reminder: the tasks' own and their subtasks'
   useEffect(() => {
     const prev = tasksRef.current
     const next = normalizeForToday(prev)
@@ -531,18 +613,18 @@ export default function TodoApp() {
   // deleted, snoozed or has its reminder removed.
   useEffect(() => {
     const stale = (id) => {
-      const t = tasks.find((x) => x.id === id)
+      const t = items.find((x) => x.id === id)
       return !t || t.done || !t.reminder || isSuppressed(t.reminder, Date.now())
     }
     for (const [id, n] of liveNotes.current) if (stale(id)) { try { n.close() } catch { /* already gone */ } liveNotes.current.delete(id) }
     swRegRef.current?.getNotifications?.().then((list) => list.forEach((n) => { if (n.tag && stale(n.tag)) n.close() })).catch(() => {})
-  }, [tasks])
+  }, [items])
   useEffect(() => {
     const check = () => {
       setNowTick(Date.now())  // keep the due-banner fresh even when muted
       if (mutedRef.current) return
       const now = Date.now()
-      const due = tasksRef.current.filter((x) =>
+      const due = reminderItems(tasksRef.current).filter((x) =>
         !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= now && !isSuppressed(x.reminder, now))
       // Which due reminders need a (re)alert now, per their repeat cadence.
       const toAlert = due.filter((x) => {
@@ -587,7 +669,7 @@ export default function TodoApp() {
       playSfx(level === 'High' && !hpAlarmOn ? 'reminder' : prioritySfx(level))
 
       const ids = new Set(toAlert.map((x) => x.id))
-      setTasks((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, reminder: { ...x.reminder, lastAlert: now } } : x)))
+      setTasks((prev) => patchItems(prev, ids, (x) => ({ ...x, reminder: { ...x.reminder, lastAlert: now } })))
     }
     // Exact timing: a timer is set for the very next moment anything is due (a reminder's time, the end of a snooze, the next
     // repeat) instead of waiting for a polling beat, so alerts fire at the scheduled second, not up to 20 s late.
@@ -595,7 +677,7 @@ export default function TodoApp() {
     const arm = () => {
       clearTimeout(timer)
       if (mutedRef.current) return
-      const at = nextAlertAt(tasksRef.current, Date.now())
+      const at = nextAlertAt(reminderItems(tasksRef.current), Date.now())
       if (at != null) timer = setTimeout(run, Math.min(Math.max(0, at - Date.now()) + 15, 2 ** 31 - 1))
     }
     const run = () => { check(); arm() }
@@ -661,31 +743,30 @@ export default function TodoApp() {
   const highPending = todays.filter((x) => !x.done && x.priority === 'High').length
   // Next upcoming reminder (across all pending tasks, any date) for the header chip.
   const nextReminder = useMemo(() => {
-    const up = tasks
+    const up = items
       .filter((x) => !x.done && x.reminder && reminderEventTime(x.reminder).getTime() >= Date.now())
       .sort((a, b) => reminderEventTime(a.reminder) - reminderEventTime(b.reminder))[0]
     return up ? reminderLabel(up.reminder) : null
-  }, [tasks, nowTick])
+  }, [items, nowTick])
   // Reminders currently due (past trigger, not done, not snoozed) — powers the
   // always-visible banner, ordered by priority then event time.
   const dueReminders = useMemo(() =>
-    tasks
+    items
       .filter((x) => !x.done && x.reminder && reminderTrigger(x.reminder).getTime() <= nowTick && !isSuppressed(x.reminder, nowTick))
       .sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] ||
         reminderEventTime(a.reminder) - reminderEventTime(b.reminder)),
-    [tasks, nowTick])
+    [items, nowTick])
   // Reminders scheduled but not yet firing (future trigger, or snoozed) — the
   // "Upcoming reminders" table, ordered by when they'll next surface.
   const upcoming = useMemo(() =>
-    tasks
+    items
       .filter((x) => !x.done && x.reminder && x.reminder.snoozeUntil !== DISMISSED &&
         (reminderTrigger(x.reminder).getTime() > nowTick || isSuppressed(x.reminder, nowTick)))
       .sort((a, b) => nextReminderAt(a.reminder, nowTick) - nextReminderAt(b.reminder, nowTick)),
-    [tasks, nowTick])
+    [items, nowTick])
 
   // --- mutations (memoized; used across many cards) ---
-  const patch = useCallback((id, fn) =>
-    setTasks((prev) => prev.map((x) => (x.id === id ? fn(x) : x))), [setTasks])
+  const patch = useCallback((id, fn) => setTasks((prev) => patchItems(prev, new Set([id]), fn)), [setTasks])  // a task, or a subtask's reminder item
   const toggle = useCallback((id) => patch(id, (x) => {
     playSfx(x.done ? 'toggleOff' : 'complete')  // different sound for check vs un-check
     return { ...x, done: !x.done }
@@ -738,13 +819,13 @@ export default function TodoApp() {
   // The same two actions for many at once (the banner's "Snooze all" / "Dismiss all").
   const snoozeAll = useCallback((ids, mins) => {
     const set = new Set(ids)
-    setTasks((prev) => prev.map((x) => (set.has(x.id) && x.reminder
+    setTasks((prev) => patchItems(prev, set, (x) => (x.reminder
       ? { ...x, reminder: { ...x.reminder, snoozeUntil: Date.now() + mins * 60000, lastAlert: null } } : x)))
   }, [setTasks])
   const dismissAll = useCallback((ids) => {
     const set = new Set(ids)
-    setTasks((prev) => prev.map((x) => {
-      if (!set.has(x.id) || !x.reminder) return x
+    setTasks((prev) => patchItems(prev, set, (x) => {
+      if (!x.reminder) return x
       const until = x.reminder.repeat > 0 ? Date.now() + x.reminder.repeat * 60000 : DISMISSED
       return { ...x, reminder: { ...x.reminder, snoozeUntil: until } }
     }))
@@ -752,7 +833,8 @@ export default function TodoApp() {
   // Set/replace/clear a task's reminder (re-arms alerts).
   const editReminder = useCallback((id, reminder) => patch(id, (x) =>
     ({ ...x, reminder: reminder ? { ...reminder, lastAlert: null, snoozeUntil: null } : null })), [patch])
-  const viewTask = useCallback((id) => {
+  const viewTask = useCallback((rawId) => {
+    const id = tasksRef.current.find((x) => (x.subtasks || []).some((st) => st.id === rawId))?.id || rawId  // a step opens its task
     setView('tasks'); setHighlightId(id)
     setTimeout(() => document.getElementById(`task-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
     setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 2400)
@@ -762,13 +844,13 @@ export default function TodoApp() {
   // and open the task when its notification is tapped.
   useEffect(() => {
     if (!isAndroid()) return
-    const run = () => syncAndroidReminders(tasks, notify && !muted)
+    const run = () => syncAndroidReminders(items, notify && !muted)
     const id = setTimeout(run, 150)
     // leaving the app right after ticking a task off must not leave its alarm behind: sync at once when the app is hidden
     const onHide = () => { if (document.hidden) { clearTimeout(id); run() } }
     document.addEventListener('visibilitychange', onHide)
     return () => { clearTimeout(id); document.removeEventListener('visibilitychange', onHide) }
-  }, [tasks, notify, muted])
+  }, [items, notify, muted])
   useEffect(() => initAndroidReminders(viewTask), [viewTask])
 
   // Register the service worker (skipped on file:// — the desktop build falls
@@ -796,6 +878,7 @@ export default function TodoApp() {
     patch(id, (x) => ({
       ...x, day, done: x.day === day ? x.done : false,
       reminder: x.reminder ? { ...x.reminder, date: day, lastAlert: null, snoozeUntil: null } : null,
+      subtasks: (x.subtasks || []).map((st) => (st.reminder ? { ...st, reminder: { ...st.reminder, date: day, lastAlert: null, snoozeUntil: null } } : st)),
     }))
   }, [patch])
   const postpone = useCallback((id) => {
@@ -806,7 +889,9 @@ export default function TodoApp() {
     const src = prev.find((x) => x.id === id)
     if (!src) return prev
     return [...prev, { ...src, id: crypto.randomUUID(), done: false, pinned: false, order: Date.now(), createdAt: Date.now(),
-      reminder: src.reminder ? { ...src.reminder, lastAlert: null } : null }]
+      reminder: src.reminder ? { ...src.reminder, lastAlert: null } : null,
+      subtasks: (src.subtasks || []).map((st) => ({ ...st, id: crypto.randomUUID(), done: false,
+        reminder: st.reminder ? { ...st.reminder, lastAlert: null, snoozeUntil: null } : st.reminder }))}]
   }), [setTasks])
 
   const addTask = useCallback((data) => {
@@ -816,16 +901,22 @@ export default function TodoApp() {
       text: data.text, priority: data.priority, category: data.category,
       reminder: data.reminder || null, recur: data.recur || null,
       done: false, pinned: false, day: todayStr(), createdAt: Date.now(),
-      order: Date.now(), subtasks: [],
+      order: Date.now(), subtasks: data.subtasks || [],
     }])
   }, [setTasks])
 
   // --- subtasks ---
-  const addSubtask = useCallback((id, text) => {
-    const v = text.trim()
+  // `data` is the step's title, or { text, priority, category, recur, reminder } when it has options of its own
+  const addSubtask = useCallback((id, data) => {
+    const d = typeof data === 'string' ? { text: data } : data
+    const v = (d.text || '').trim()
     if (!v) return
-    patch(id, (x) => ({ ...x, subtasks: [...(x.subtasks || []), { id: crypto.randomUUID(), text: v, done: false }] }))
+    patch(id, (x) => ({ ...x, subtasks: [...(x.subtasks || []), newSubtask({ ...d, text: v })] }))
   }, [patch])
+  // change a step's own priority / category / repeat / reminder (an empty value goes back to "same as the task")
+  const editSubtask = useCallback((id, sid, fields) => patch(id, (x) => ({
+    ...x, subtasks: x.subtasks.map((st) => (st.id === sid ? applySubFields(st, fields) : st)),
+  })), [patch])
   const toggleSubtask = useCallback((id, sid) => patch(id, (x) => ({
     ...x, subtasks: x.subtasks.map((s) => (s.id === sid ? { ...s, done: !s.done } : s)),
   })), [patch])
@@ -855,7 +946,7 @@ export default function TodoApp() {
     Category: t.category,
     Status: t.done ? 'Done' : 'Pending',
     Reminder: t.reminder ? `${t.reminder.date} ${t.reminder.time}${t.reminder.lead ? ` (-${t.reminder.lead}m)` : ''}${t.reminder.repeat ? ` /${t.reminder.repeat}m` : ''}` : '',
-    Subtasks: (t.subtasks || []).map((s) => `${s.done ? '[x]' : '[ ]'} ${s.text}`).join('; '),
+    Subtasks: (t.subtasks || []).map(subLine).join('; '),
   })), [tasks])
 
   const download = (blob, ext) => {
@@ -1171,7 +1262,7 @@ export default function TodoApp() {
                         onToggle={toggle} onEdit={setEditingId} onRename={rename}
                         onDelete={remove} onPostpone={postpone} onDuplicate={duplicate} onPin={togglePin}
                         onEditReminder={editReminder}
-                        onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onRemoveSubtask={removeSubtask} />
+                        onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onRemoveSubtask={removeSubtask} onEditSubtask={editSubtask} />
                     ))}
                   </ul>
                 </SortableContext>
@@ -1191,7 +1282,7 @@ export default function TodoApp() {
                     onToggle={toggle} onEdit={setEditingId} onRename={rename}
                     onDelete={remove} onPostpone={postpone} onDuplicate={duplicate} onPin={togglePin}
                     onEditReminder={editReminder}
-                    onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onRemoveSubtask={removeSubtask} />
+                    onAddSubtask={addSubtask} onToggleSubtask={toggleSubtask} onRemoveSubtask={removeSubtask} onEditSubtask={editSubtask} />
                 ))}
               </ul>
             )}
@@ -1604,7 +1695,7 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
   const exportCSV = () => {
     const cols = ['Task', 'Priority', 'Category', 'Archived', 'Why', 'Was done', 'Task day', 'Reminder', 'Subtasks']
     const rows = shown.map((x) => [x.text, x.priority, x.category, new Date(x.archivedAt).toISOString(), ARCHIVE_REASONS[x.reason], x.done ? 'Yes' : 'No', x.day,
-      x.reminder ? `${x.reminder.date} ${x.reminder.time}` : '', (x.subtasks || []).map((s) => `${s.done ? '[x]' : '[ ]'} ${s.text}`).join('; ')])
+      x.reminder ? `${x.reminder.date} ${x.reminder.time}` : '', (x.subtasks || []).map(subLine).join('; ')])
     save(new Blob(['﻿' + [cols.join(','), ...rows.map((r) => r.map(csvCell).join(','))].join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'csv')
   }
 
@@ -1910,6 +2001,64 @@ function ProgressDashboard({ pct, done, total, celebrate }) {
 
 /* ------------------------------ Reminder editor ---------------------------- */
 const REM_CLS = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950/50'
+// shared look of the small pill controls under the task box (priority, category, repeat, reminder, subtasks)
+const CHIP_BASE = 'inline-flex h-9 items-center rounded-full border border-slate-200 bg-slate-50 px-3 text-sm font-medium outline-none transition dark:border-slate-800 dark:bg-slate-950/50'
+const sameReminder = (a, b) => (!a && !b) || (!!a && !!b && a.date === b.date && a.time === b.time && (a.lead || 0) === (b.lead || 0) && (a.repeat || 0) === (b.repeat || 0))
+/** The same four pills as the main task, for one step: priority, category, repeat and reminder. Left empty, a step simply
+    follows its task. `onChange` gets only the field that changed. */
+function SubOptions({ value, onChange, categories, task, remDefaults, remKey = 0 }) {
+  const prio = value.priority || ''
+  const cat = value.category || ''
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <ChipSelect label="Subtask priority" value={prio} onChange={(e) => onChange({ priority: e.target.value })}
+        lead={<span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_DOT[prio || task.priority] || PRIORITY_DOT.Medium}`} />}>
+        <option value="">Same priority</option>
+        {PRIORITIES.map((p) => <option key={p} value={p}>{p} priority</option>)}
+      </ChipSelect>
+      <ChipSelect label="Subtask category" value={cat} onChange={(e) => onChange({ category: e.target.value })}
+        lead={<span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor(categories, cat || task.category) }} />}>
+        <option value="">Same category</option>
+        {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+      </ChipSelect>
+      <ChipSelect label="Subtask repeat" value={value.recur || ''} onChange={(e) => onChange({ recur: e.target.value })} lead={<RotateCw size={13} strokeWidth={2.2} />}>
+        {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
+      </ChipSelect>
+      <ReminderEditor key={remKey} initial={value.reminder || null} defaults={remDefaults}
+        onChange={(r) => { if (!sameReminder(r, value.reminder)) onChange({ reminder: r }) }} />
+    </div>
+  )
+}
+/** What a step has of its own, as small badges (nothing is shown for a step that just follows its task). */
+function SubChips({ st, categories, nowTick = Date.now() }) {
+  const late = st.reminder && !st.done && overdueMins(st.reminder, nowTick) > 0
+  if (!st.priority && !st.category && !st.recur && !st.reminder) return null
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {st.priority && <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold ${PRIORITY_BADGE[st.priority]}`}>{st.priority}</span>}
+      {st.category && <span className="rounded-full px-1.5 py-px text-[10px] font-semibold" style={catBadgeStyle(categories, st.category)}>{st.category}</span>}
+      {st.recur && <span className="flex items-center gap-0.5 rounded-full bg-teal-500/15 px-1.5 py-px text-[10px] font-bold text-teal-700 dark:text-teal-300"><RotateCw size={9} /> {RECUR_LABEL[st.recur]}</span>}
+      {st.reminder && (
+        <span className={`flex items-center gap-0.5 text-[10px] ${late ? 'font-bold text-rose-500' : 'text-slate-400'}`} title={`Reminds ${reminderLabel(st.reminder)}`}>
+          <Bell size={10} />{reminderLabel(st.reminder)}{late ? ` · overdue ${fmtDur(overdueMins(st.reminder, nowTick))}` : ''}
+        </span>
+      )}
+    </span>
+  )
+}
+/** A pill-shaped dropdown with a small icon or colour dot in front. */
+function ChipSelect({ lead, label, value, onChange, children }) {
+  return (
+    <label className="relative inline-flex items-center">
+      <span className="pointer-events-none absolute left-3 flex items-center text-slate-500 dark:text-slate-400">{lead}</span>
+      <select aria-label={label} title={label} value={value} onChange={onChange}
+        className={`${CHIP_BASE} cursor-pointer appearance-none pl-8 pr-8 hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20`}>
+        {children}
+      </select>
+      <ChevronDown size={13} className="pointer-events-none absolute right-3 text-slate-400" />
+    </label>
+  )
+}
 const inPreset = (opts, v) => opts.some(([, x]) => x === v)
 
 /** Shared reminder configuration row. Emits a reminder object (no lastAlert/snooze)
@@ -1931,9 +2080,10 @@ function ReminderEditor({ initial, onChange, defaults }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <label className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300"
+      <label className={`${CHIP_BASE} cursor-pointer gap-1.5 focus-within:ring-2 focus-within:ring-sky-500/40 ${on ? 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'text-slate-600 hover:border-slate-300 dark:text-slate-300'}`}
         title="Alert (in-app banner + sound, plus desktop when allowed) on a date/time">
-        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="accent-sky-600" /> Remind me
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="sr-only" />
+        <Bell size={14} strokeWidth={2.2} /> Remind me
       </label>
       {on && (
         <>
@@ -1967,6 +2117,13 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
   const [recur, setRecur] = useState('')   // recurrence rule ('' = none)
   const [rem, setRem] = useState(null)     // reminder object from ReminderEditor
   const [remKey, setRemKey] = useState(0)  // bump to remount/reset the editor after add
+  const [subs, setSubs] = useState([])     // steps added before the task is created: { text, priority, category, recur, reminder }
+  const [subDraft, setSubDraft] = useState('')
+  const [subOpts, setSubOpts] = useState({})  // options for the step being typed
+  const [subOptsKey, setSubOptsKey] = useState(0)
+  const [editSub, setEditSub] = useState(null) // index of a listed step whose options are open
+  const [subsOpen, setSubsOpen] = useState(false)
+  const subRef = useRef(null)
 
   // Keep the selected category valid if the list changes (e.g. deleted in settings).
   useEffect(() => { if (!categories.some((c) => c.name === category)) setCategory(categories[0]?.name || '') }, [categories, category])
@@ -1974,6 +2131,17 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
   // Live parse of what's typed, so we can preview and use natural-language shortcuts.
   const parsed = text.trim() ? parseQuickAdd(text, categories) : null
   const detected = parsed && (parsed.category || parsed.priority || parsed.reminder)
+
+  // one or many lines (a pasted list becomes one subtask per line); blanks are dropped, titles capped like everywhere else
+  const addSubs = (raw) => {
+    const lines = String(raw).split(/\r?\n/).map((l) => l.replace(/^\s*(?:[-*•]|\[ ?\]|\d+[.)])\s+/, '').trim().slice(0, 500)).filter(Boolean)
+    if (lines.length) setSubs((s) => [...s, ...lines.map((text) => ({ ...subOpts, text }))].slice(0, 200))
+  }
+  const commitSubDraft = () => {
+    if (!subDraft.trim()) return
+    addSubs(subDraft); setSubDraft(''); setSubOpts({}); setSubOptsKey((k) => k + 1)  // the next step starts plain again
+  }
+  const editListed = (i, fields) => setSubs((s) => s.map((st, j) => (j === i ? { ...st, ...fields } : st)))
 
   const submit = (e) => {
     e.preventDefault()
@@ -1983,18 +2151,21 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
     const reminder = rem
       ? { ...rem, lastAlert: null, snoozeUntil: null }
       : (p.reminder ? { date: p.tomorrow ? dateStr(new Date(Date.now() + 864e5)) : todayStr(), time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null)
+    const pending = subDraft.trim() ? [...subs, { ...subOpts, text: subDraft.trim().slice(0, 500) }] : subs  // a half-typed subtask is not lost
     onAdd({
       text: p.text,
       priority: p.priority || priority,
       category: p.category || category,
       reminder,
       recur: recur || null,
+      subtasks: pending.map((st) => newSubtask(st)),
     })
-    setText(''); setRem(null); setRemKey((k) => k + 1); setRecur('')
+    setText(''); setRem(null); setRemKey((k) => k + 1); setRecur(''); setSubs([]); setSubDraft(''); setSubOpts({}); setSubOptsKey((k) => k + 1); setEditSub(null); setSubsOpen(false)
     if (reminder) onFirstReminder()  // ask for desktop-notification permission (optional bonus)
   }
 
-  const selectCls = REM_CLS
+  const subCount = subs.length + (subDraft.trim() ? 1 : 0)
+  const catDot = (name) => <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor(categories, name) }} />
 
   return (
     <form onSubmit={submit}
@@ -2006,31 +2177,88 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           placeholder="Try: Email Sam at 5pm #work !high"
           aria-label="New task" maxLength={2000}
           autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
-          className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
+          className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
         />
-        <button type="submit"
-          className="group flex shrink-0 items-center gap-2 rounded-full bg-sky-600 py-2 pl-5 pr-2 text-sm font-semibold text-white transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-sky-500 active:scale-[0.98]">
+        <button type="submit" title="Add task (Enter)"
+          className="group flex shrink-0 items-center gap-2 rounded-full bg-sky-600 py-2.5 pl-5 pr-2.5 text-sm font-semibold text-white transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-sky-500 active:scale-[0.98]">
           Add
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
             <Plus size={15} strokeWidth={2} />
           </span>
         </button>
       </div>
+
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} aria-label="Priority" title="Priority" className={selectCls}>
+        <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
+          lead={<span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_DOT[priority]}`} />}>
           {PRIORITIES.map((p) => <option key={p} value={p}>{p} priority</option>)}
-        </select>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" title="Category" className={selectCls}>
+        </ChipSelect>
+        <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} lead={catDot(category)}>
           {categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
-        <select value={recur} onChange={(e) => setRecur(e.target.value)} aria-label="Repeat" title="Repeat this task" className={selectCls}>
+        </ChipSelect>
+        <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
           {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
-        </select>
+        </ChipSelect>
+        <button type="button" onClick={() => { setSubsOpen((o) => !o); setTimeout(() => subRef.current?.focus(), 50) }} aria-expanded={subsOpen}
+          title="Break the task into steps"
+          className={`${CHIP_BASE} gap-1.5 hover:border-slate-300 ${subsOpen || subCount ? 'border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300' : 'text-slate-600 dark:text-slate-300'}`}>
+          <ListTodo size={14} strokeWidth={2.2} /> Subtasks
+          {subCount > 0 && <span className="rounded-full bg-teal-500/20 px-1.5 text-[11px] font-bold tabular-nums">{subCount}</span>}
+        </button>
         <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} />
         {rem && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
       </div>
+
+      {/* subtasks added together with the task */}
+      {subsOpen && (
+        <div className="animate-fade-up mt-3 rounded-2xl border border-slate-200/70 bg-slate-500/[0.04] p-3 dark:border-slate-700/60">
+          {subs.length > 0 && (
+            <ul className="mb-2 space-y-1" aria-label="Subtasks to add">
+              {subs.map((st, i) => (
+                <li key={i} className="rounded-lg px-1 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="h-4 w-4 shrink-0 rounded border border-slate-300 dark:border-slate-600" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 break-words">{st.text}</span>
+                    <button type="button" onClick={() => setEditSub(editSub === i ? null : i)} aria-label={`Options for subtask ${st.text}`} aria-expanded={editSub === i}
+                      className="shrink-0 rounded p-0.5 text-slate-300 transition hover:text-sky-500"><Pencil size={13} /></button>
+                    <button type="button" onClick={() => { setSubs((s) => s.filter((_, j) => j !== i)); setEditSub(null) }} aria-label={`Remove subtask ${st.text}`}
+                      className="shrink-0 rounded p-0.5 text-slate-300 transition hover:text-rose-500"><X size={13} /></button>
+                  </div>
+                  <div className="pl-6"><SubChips st={st} categories={categories} /></div>
+                  {editSub === i && (
+                    <div className="mb-1 mt-1.5 pl-6">
+                      <SubOptions value={st} onChange={(f) => editListed(i, f)} categories={categories} task={{ priority, category }} remDefaults={remDefaults} remKey={`l${i}`} />
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center gap-2">
+            <Plus size={14} className="shrink-0 text-slate-400" />
+            <input ref={subRef} value={subDraft} onChange={(e) => setSubDraft(e.target.value)} aria-label="New subtask"
+              placeholder={subs.length ? 'Add another step… (Enter)' : 'Add a step… (Enter). Paste a list to add several.'}
+              maxLength={500}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); commitSubDraft() }
+                else if (e.key === 'Escape') { e.stopPropagation(); setSubDraft(''); setSubsOpen(false) }
+                else if (e.key === 'Backspace' && !subDraft && subs.length) setSubs((s) => s.slice(0, -1))
+              }}
+              onPaste={(e) => {
+                const t = e.clipboardData.getData('text')
+                if (/\r?\n/.test(t.trim())) { e.preventDefault(); addSubs(t) }
+              }}
+              className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-slate-400" />
+          </div>
+          {/* the same pills as the main task, for the step being typed */}
+          <div className="mt-2.5 border-t border-slate-200/60 pt-2.5 dark:border-slate-700/60">
+            <SubOptions value={subOpts} onChange={(f) => setSubOpts((o) => ({ ...o, ...f }))} categories={categories} task={{ priority, category }}
+              remDefaults={remDefaults} remKey={`n${subOptsKey}`} />
+          </div>
+        </div>
+      )}
 
       {/* live preview of natural-language shortcuts */}
       {detected && (
@@ -2071,7 +2299,7 @@ function SortableTaskCard(props) {
 
 // memo: ticking one task off no longer re-draws every other card (slow with a couple of hundred tasks)
 const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), categories = DEFAULT_CATEGORIES, onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
-  onEditReminder, onAddSubtask, onToggleSubtask, onRemoveSubtask, dragRef, dragStyle, handleProps, isDragging }) {
+  onEditReminder, onAddSubtask, onToggleSubtask, onRemoveSubtask, onEditSubtask, dragRef, dragStyle, handleProps, isDragging }) {
   const [draft, setDraft] = useState(task.text)
   const [expanded, setExpanded] = useState(false)
   const [subDraft, setSubDraft] = useState('')
@@ -2083,7 +2311,16 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
   const doneSubs = subs.filter((s) => s.done).length
   const overdue = task.reminder && !task.done && overdueMins(task.reminder, nowTick) > 0
 
-  const addSub = (e) => { e.preventDefault(); onAddSubtask(task.id, subDraft); setSubDraft('') }
+  const [subOpts, setSubOpts] = useState({})        // options for the step being typed
+  const [subOptsOpen, setSubOptsOpen] = useState(false)
+  const [subOptsKey, setSubOptsKey] = useState(0)
+  const [editSubId, setEditSubId] = useState(null)  // a listed step whose options are open
+  const addSub = (e) => {
+    e.preventDefault()
+    if (!subDraft.trim()) return
+    onAddSubtask(task.id, { ...subOpts, text: subDraft })
+    setSubDraft(''); setSubOpts({}); setSubOptsKey((k) => k + 1)
+  }
   const saveReminder = () => { onEditReminder(task.id, remDraft); setRemOpen(false) }
 
   return (
@@ -2189,27 +2426,50 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
       {expanded && (
         <div className="mt-2 space-y-1.5 border-t border-slate-200/60 pt-2 pl-7 dark:border-slate-700/60">
           {subs.map((s) => (
-            <div key={s.id} className="group/sub flex items-center gap-2 text-sm">
-              <button onClick={() => onToggleSubtask(task.id, s.id)}
-                aria-label={s.done ? 'Mark subtask incomplete' : 'Mark subtask complete'}
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                  s.done ? 'border-transparent bg-lime-500 text-white' : 'border-slate-300 hover:border-sky-500 dark:border-slate-600'}`}>
-                {s.done && <Check size={11} strokeWidth={3} />}
-              </button>
-              <span className={`min-w-0 flex-1 break-words ${s.done ? 'text-slate-400' : ''}`}>
-                <span className={s.done ? 'strike' : ''}>{s.text}</span>
-              </span>
-              <button onClick={() => onRemoveSubtask(task.id, s.id)} aria-label="Delete subtask"
-                className="shrink-0 rounded p-0.5 text-slate-300 opacity-0 transition hover:text-rose-500 group-hover/sub:opacity-100">
-                <X size={13} />
-              </button>
+            <div key={s.id}>
+              <div className="group/sub flex items-center gap-2 text-sm">
+                <button onClick={() => onToggleSubtask(task.id, s.id)}
+                  aria-label={s.done ? 'Mark subtask incomplete' : 'Mark subtask complete'}
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                    s.done ? 'border-transparent bg-lime-500 text-white' : 'border-slate-300 hover:border-sky-500 dark:border-slate-600'}`}>
+                  {s.done && <Check size={11} strokeWidth={3} />}
+                </button>
+                <span className={`min-w-0 flex-1 break-words ${s.done ? 'text-slate-400' : ''}`}>
+                  <span className={s.done ? 'strike' : ''}>{s.text}</span>
+                </span>
+                <button onClick={() => setEditSubId(editSubId === s.id ? null : s.id)} aria-label="Subtask options" aria-expanded={editSubId === s.id}
+                  className="shrink-0 rounded p-0.5 text-slate-300 opacity-0 transition hover:text-sky-500 focus:opacity-100 group-hover/sub:opacity-100">
+                  <Pencil size={12} />
+                </button>
+                <button onClick={() => onRemoveSubtask(task.id, s.id)} aria-label="Delete subtask"
+                  className="shrink-0 rounded p-0.5 text-slate-300 opacity-0 transition hover:text-rose-500 focus:opacity-100 group-hover/sub:opacity-100">
+                  <X size={13} />
+                </button>
+              </div>
+              <div className="pl-6"><SubChips st={s} categories={categories} nowTick={nowTick} /></div>
+              {editSubId === s.id && (
+                <div className="mb-1 mt-1.5 pl-6">
+                  <SubOptions value={s} onChange={(f) => onEditSubtask(task.id, s.id, f)} categories={categories} task={task} remKey={`e${s.id}`} />
+                </div>
+              )}
             </div>
           ))}
-          <form onSubmit={addSub} className="flex items-center gap-2">
-            <Plus size={13} className="shrink-0 text-slate-400" />
-            <input value={subDraft} onChange={(e) => setSubDraft(e.target.value)}
-              placeholder="Add a subtask…"
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400" />
+          <form onSubmit={addSub} className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Plus size={13} className="shrink-0 text-slate-400" />
+              <input value={subDraft} onChange={(e) => setSubDraft(e.target.value)}
+                placeholder="Add a subtask…" maxLength={500}
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400" />
+              <button type="button" onClick={() => setSubOptsOpen((o) => !o)} aria-expanded={subOptsOpen} title="Priority, category, repeat and reminder for this step"
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${subOptsOpen || Object.keys(subOpts).length ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300' : 'bg-slate-500/10 text-slate-500 hover:bg-slate-500/20 dark:text-slate-400'}`}>
+                Options
+              </button>
+            </div>
+            {subOptsOpen && (
+              <div className="pl-5">
+                <SubOptions value={subOpts} onChange={(f) => setSubOpts((o) => ({ ...o, ...f }))} categories={categories} task={task} remKey={`n${subOptsKey}`} />
+              </div>
+            )}
           </form>
         </div>
       )}
