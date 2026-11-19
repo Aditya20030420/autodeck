@@ -6,6 +6,7 @@ import {
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
+  Archive as ArchiveIcon, ArchiveRestore,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -97,6 +98,27 @@ function sanitizeImported(list) {
     }
   })
 }
+
+/* ARCHIVE: every task that leaves the list is kept here instead of vanishing: deleted ones, finished ones the daily
+   reset clears away, and the ones an import replaces. Stored under "todo.archive" as the task plus { archivedAt, reason }. */
+const ARCHIVE_MAX = 3000  // oldest go first beyond this, so storage can't grow without limit
+const ARCHIVE_REASONS = { deleted: 'Deleted', completed: 'Completed', replaced: 'Replaced by import' }
+const reviveArchive = (v) => (Array.isArray(v)
+  ? v.filter((x) => x && typeof x === 'object' && typeof x.id === 'string' && typeof x.text === 'string')
+      .map((x) => ({ ...x, archivedAt: Number.isFinite(x.archivedAt) ? x.archivedAt : Date.now(), reason: ARCHIVE_REASONS[x.reason] ? x.reason : 'deleted' }))
+  : [])
+/** An archived entry back as an ordinary task for today: not done, alarms re-armed, a reminder that already passed dropped. */
+function revivedTask(a, order) {
+  const { archivedAt, reason, ...task } = a  // eslint-disable-line no-unused-vars
+  let reminder = task.reminder
+  if (reminder && task.recur) reminder = { ...reminder, date: todayStr(), lastAlert: null, snoozeUntil: null }
+  else if (reminder && reminderEventTime(reminder).getTime() <= Date.now()) reminder = null
+  else if (reminder) reminder = { ...reminder, lastAlert: null, snoozeUntil: null }
+  return { ...task, day: todayStr(), done: false, pinned: false, order, reminder }
+}
+
+/* Tasks as read from storage: known fields only, and old-style reminders upgraded, so the first screen can't crash on them. */
+const reviveTasks = (v) => sanitizeImported(Array.isArray(v) ? v : []).map((x) => ({ ...x, reminder: migrateReminder(x.reminder) }))
 
 function normalizeForToday(tasks) {
   const t = todayStr()
@@ -359,7 +381,9 @@ function playSfx(name) {
 // ============================================================================
 
 export default function TodoApp() {
-  const [tasks, setTasks] = useLocalStorage('todo.tasks', [], (v) => normalizeForToday(sanitizeImported(Array.isArray(v) ? v : [])))
+  const [tasks, setTasks] = useLocalStorage('todo.tasks', [], reviveTasks)
+  const [archive, setArchive] = useLocalStorage('todo.archive', [], reviveArchive)
+  const [archiveKeep, setArchiveKeep] = useLocalStorage('todo.archiveKeep', 0)  // days to keep archived tasks; 0 = for ever
   const [dark, setDark] = useLocalStorage('todo.dark', () =>
     window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [filter, setFilter] = useState('All')
@@ -442,7 +466,30 @@ export default function TodoApp() {
   // Normalise for the new day: on load, and again when midnight passes with the app left open
   // (nowTick re-renders every 20 s, so `today` changes by itself).
   const today = todayStr()
-  useEffect(() => { setTasks((prev) => normalizeForToday(prev)) }, [setTasks, today])
+  // Finished tasks from earlier days that the reset clears away are archived, not lost.
+  const archiveAdd = useCallback((list, reason) => {
+    if (!list.length) return
+    setArchive((prev) => {
+      const have = new Set(prev.map((x) => x.id))  // also makes a repeated call (React strict mode) harmless
+      const add = list.filter((x) => !have.has(x.id)).map((x) => ({ ...x, archivedAt: Date.now(), reason }))
+      return add.length ? [...add, ...prev].slice(0, ARCHIVE_MAX) : prev
+    })
+  }, [setArchive])
+  const tasksRef = useRef(tasks)
+  tasksRef.current = tasks
+  useEffect(() => {
+    const prev = tasksRef.current
+    const next = normalizeForToday(prev)
+    const kept = new Set(next.map((x) => x.id))
+    archiveAdd(prev.filter((x) => !kept.has(x.id)), 'completed')
+    setTasks(next)
+  }, [setTasks, archiveAdd, today])
+  // Optional automatic clean-up of old archive entries (Archive tab → "Keep for").
+  useEffect(() => {
+    if (!archiveKeep) return
+    const cut = Date.now() - archiveKeep * 864e5
+    setArchive((prev) => (prev.some((x) => x.archivedAt < cut) ? prev.filter((x) => x.archivedAt >= cut) : prev))
+  }, [archiveKeep, today, setArchive])
 
   // Apply theme class to <html>.
   useEffect(() => {
@@ -461,8 +508,6 @@ export default function TodoApp() {
   //     showing due reminders regardless. Muting silences the sound + notifications.
   const mutedRef = useRef(muted)
   mutedRef.current = muted
-  const tasksRef = useRef(tasks)
-  tasksRef.current = tasks
   useEffect(() => {
     const check = () => {
       setNowTick(Date.now())  // keep the due-banner fresh even when muted
@@ -595,16 +640,34 @@ export default function TodoApp() {
   }), [patch])
   // Delete keeps the removed task around briefly so it can be undone from the toast.
   const remove = useCallback((id) => {
+    const victim = tasksRef.current.find((x) => x.id === id)
+    if (!victim) return
     playSfx('delete')
-    setTasks((prev) => {
-      const victim = prev.find((x) => x.id === id)
-      if (victim) setUndo(victim)
-      return prev.filter((x) => x.id !== id)
-    })
-  }, [setTasks])
+    setUndo(victim)
+    archiveAdd([victim], 'deleted')  // kept in the Archive, so a delete is never final
+    setTasks((prev) => prev.filter((x) => x.id !== id))
+  }, [setTasks, archiveAdd])
   const undoDelete = useCallback(() => {
-    setUndo((v) => { if (v) setTasks((prev) => [...prev, v]); return null })
-  }, [setTasks])
+    if (!undo) return
+    setTasks((prev) => (prev.some((x) => x.id === undo.id) ? prev : [...prev, undo]))
+    setArchive((prev) => prev.filter((x) => x.id !== undo.id))
+    setUndo(null)
+  }, [undo, setTasks, setArchive])
+  // Archive tab actions
+  const restoreArchived = useCallback((ids) => {
+    const set = new Set(ids)
+    const items = archive.filter((x) => set.has(x.id) && !tasksRef.current.some((t) => t.id === x.id))
+    if (!items.length) return
+    const base = Date.now()
+    setTasks((prev) => [...prev, ...items.map((x, i) => revivedTask(x, base + i))])
+    setArchive((prev) => prev.filter((x) => !set.has(x.id)))
+    setNotice({ text: `Restored ${items.length} task${items.length === 1 ? '' : 's'} to today.` })
+  }, [archive, setTasks, setArchive])
+  const deleteArchived = useCallback((ids) => {
+    const set = new Set(ids)
+    setArchive((prev) => prev.filter((x) => !set.has(x.id)))
+    setNotice({ text: `Permanently deleted ${set.size} task${set.size === 1 ? '' : 's'}.` })
+  }, [setArchive])
   const rename = useCallback((id, text) => {
     const v = text.trim()
     if (v) patch(id, (x) => ({ ...x, text: v }))
@@ -796,6 +859,9 @@ export default function TodoApp() {
         const data = JSON.parse(reader.result)
         if (!Array.isArray(data)) throw new Error('not an array')
         const clean = sanitizeImported(data)
+        // the tasks an import replaces go to the Archive (unless the backup contains them again)
+        const incoming = new Set(clean.map((x) => x.id))
+        archiveAdd(tasksRef.current.filter((x) => !incoming.has(x.id)), 'replaced')
         setTasks(normalizeForToday(clean))
         setNotice({ text: `Imported ${clean.length} task${clean.length === 1 ? '' : 's'}${clean.length < data.length ? ` (${data.length - clean.length} entries were not tasks and were skipped)` : ''}.` })
       } catch {
@@ -803,7 +869,7 @@ export default function TodoApp() {
       }
     }
     reader.readAsText(file)
-  }, [setTasks])
+  }, [setTasks, archiveAdd])
 
   // Bell click: request permission if needed, otherwise mute/unmute in-app.
   const requestNotify = useCallback(async () => {
@@ -966,18 +1032,24 @@ export default function TodoApp() {
 
         {/* View tabs: Tasks board vs Daily Report */}
         <div className="glass mb-6 inline-flex gap-0.5 rounded-full p-1 shadow-sm">
-          {[['tasks', 'Tasks', ListTodo], ['week', 'Week', CalendarDays], ['report', 'Daily Report', ClipboardList]].map(([id, label, Icon]) => (
+          {[['tasks', 'Tasks', ListTodo], ['week', 'Week', CalendarDays], ['report', 'Daily Report', ClipboardList], ['archive', 'Archive', ArchiveIcon]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setView(id)}
-              className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-300 active:scale-[0.97] ${
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-300 active:scale-[0.97] sm:px-4 ${
                 view === id ? 'bg-teal-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
               }`}>
               <Icon size={13} strokeWidth={2.2} /> {label}
+              {id === 'archive' && archive.length > 0 && (
+                <span className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${view === id ? 'bg-white/25' : 'bg-slate-500/15'}`}>{archive.length}</span>
+              )}
             </button>
           ))}
         </div>
 
         {view === 'report' ? (
           <DailyReport tasks={tasks} onAddGoal={addTask} onToggleGoal={toggle} />
+        ) : view === 'archive' ? (
+          <ArchiveView archive={archive} categories={categories} keepDays={archiveKeep} setKeepDays={setArchiveKeep}
+            onRestore={restoreArchived} onDelete={deleteArchived} />
         ) : view === 'week' ? (
           <WeekView tasks={tasks} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
         ) : (
@@ -1403,6 +1475,230 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
             })}
           </ul>
         </div>
+      )}
+    </div>
+  )
+}
+
+/* -------------------------------- Archive ---------------------------------- */
+const csvCell = (v) => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+const KEEP_OPTIONS = [['Keep for ever', 0], ['Keep 30 days', 30], ['Keep 90 days', 90], ['Keep 1 year', 365]]
+const SORTS = [['newest', 'Newest first'], ['oldest', 'Oldest first'], ['priority', 'Priority'], ['az', 'A to Z']]
+const fmtStamp = (ms) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+const dayOf = (ms) => dateStr(new Date(ms))
+
+/** Everything that left the task list: search, filter, sort, restore, delete for good, export, and automatic clean-up. */
+function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, onDelete }) {
+  const [query, setQuery] = useState('')
+  const [reason, setReason] = useState('all')
+  const [cat, setCat] = useState('all')
+  const [pri, setPri] = useState('all')
+  const [sort, setSort] = useState('newest')
+  const [from, setFrom] = useState('')  // archived on or after
+  const [to, setTo] = useState('')      // archived on or before
+  const [sel, setSel] = useState(() => new Set())
+  const [confirm, setConfirm] = useState(null)  // what a pending "delete for good" would remove: 'selected' | 'all' | a task id
+  const [openId, setOpenId] = useState(null)
+  const sel_ = 'rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50'
+  const pill = 'rounded-full px-3 py-1.5 text-xs font-semibold transition active:scale-95'
+
+  const catNames = useMemo(() => [...new Set([...categories.map((c) => c.name), ...archive.map((x) => x.category)])], [categories, archive])
+  const byReason = useMemo(() => {
+    const c = { deleted: 0, completed: 0, replaced: 0 }
+    archive.forEach((x) => { c[x.reason] = (c[x.reason] || 0) + 1 })
+    return c
+  }, [archive])
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const lo = from ? new Date(`${from}T00:00`).getTime() : -Infinity
+    const hi = to ? new Date(`${to}T23:59:59.999`).getTime() : Infinity
+    const list = archive.filter((x) =>
+      (reason === 'all' || x.reason === reason) && (cat === 'all' || x.category === cat) && (pri === 'all' || x.priority === pri) &&
+      x.archivedAt >= lo && x.archivedAt <= hi &&
+      (!q || x.text.toLowerCase().includes(q) || (x.subtasks || []).some((s) => s.text.toLowerCase().includes(q))))
+    const cmp = {
+      newest: (a, b) => b.archivedAt - a.archivedAt,
+      oldest: (a, b) => a.archivedAt - b.archivedAt,
+      priority: (a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] || b.archivedAt - a.archivedAt,
+      az: (a, b) => a.text.localeCompare(b.text),
+    }[sort]
+    return [...list].sort(cmp)
+  }, [archive, query, reason, cat, pri, sort, from, to])
+
+  // only what is on screen can be selected or acted on, so nothing hidden by a filter is ever touched
+  const picked = shown.filter((x) => sel.has(x.id))
+  const allPicked = shown.length > 0 && picked.length === shown.length
+  const toggle = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const pickAll = () => setSel(allPicked ? new Set() : new Set(shown.map((x) => x.id)))
+  const filtered = !!(query || reason !== 'all' || cat !== 'all' || pri !== 'all' || from || to)
+  const clearFilters = () => { setQuery(''); setReason('all'); setCat('all'); setPri('all'); setFrom(''); setTo('') }
+
+  const doRestore = (ids) => { onRestore(ids); setSel(new Set()) }
+  const doDelete = (ids) => { onDelete(ids); setSel(new Set()); setConfirm(null) }
+
+  const save = (blob, ext) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `autodeck-archive-${todayStr()}.${ext}`; a.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportJSON = () => save(new Blob([JSON.stringify(shown, null, 2)], { type: 'application/json' }), 'json')
+  const exportCSV = () => {
+    const cols = ['Task', 'Priority', 'Category', 'Archived', 'Why', 'Was done', 'Task day', 'Reminder', 'Subtasks']
+    const rows = shown.map((x) => [x.text, x.priority, x.category, new Date(x.archivedAt).toISOString(), ARCHIVE_REASONS[x.reason], x.done ? 'Yes' : 'No', x.day,
+      x.reminder ? `${x.reminder.date} ${x.reminder.time}` : '', (x.subtasks || []).map((s) => `${s.done ? '[x]' : '[ ]'} ${s.text}`).join('; ')])
+    save(new Blob(['﻿' + [cols.join(','), ...rows.map((r) => r.map(csvCell).join(','))].join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'csv')
+  }
+
+  const row = (x) => {
+    const subs = x.subtasks || []
+    const open = openId === x.id
+    return (
+      <li key={x.id} className="glass-sm rounded-2xl border-l-[3px] px-3 py-2.5" style={{ borderLeftColor: catColor(categories, x.category) }}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <input type="checkbox" checked={sel.has(x.id)} onChange={() => toggle(x.id)} aria-label={`Select ${x.text}`} className="h-4 w-4 shrink-0 accent-teal-500" />
+          <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
+          <button onClick={() => setOpenId(open ? null : x.id)} aria-expanded={open}
+            className={`min-w-[9rem] flex-1 break-words text-left text-sm ${open ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : ''}`}>{x.text}</button>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <button onClick={() => doRestore([x.id])} title="Restore to today" aria-label="Restore to today"
+              className="flex items-center gap-1 rounded-full bg-teal-500/10 px-2.5 py-1 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-500/20 active:scale-95 dark:text-teal-300">
+              <ArchiveRestore size={13} /> Restore
+            </button>
+            {confirm === x.id ? (
+              <>
+                <button onClick={() => doDelete([x.id])} className="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-semibold text-white transition active:scale-95">Delete for good</button>
+                <button onClick={() => setConfirm(null)} className="rounded-full px-2 py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirm(x.id)} title="Delete for good" aria-label="Delete for good"
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-500"><Trash2 size={14} /></button>
+            )}
+          </div>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${PRIORITY_BADGE[x.priority]}`}>{x.priority}</span>
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, x.category)}>{x.category}</span>
+          <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-slate-500 sm:text-[11px] dark:text-slate-400">{ARCHIVE_REASONS[x.reason]}</span>
+          {x.done && <span className="rounded-full bg-lime-500/15 px-2 py-0.5 text-[10px] font-semibold text-lime-700 sm:text-[11px] dark:text-lime-300">Was done</span>}
+          {subs.length > 0 && <span className="text-[11px] text-slate-400">{subs.filter((s) => s.done).length}/{subs.length} subtasks</span>}
+          <span className="text-[11px] text-slate-400">archived {fmtStamp(x.archivedAt)}</span>
+        </div>
+        {open && (
+          <div className="mt-2 space-y-1 border-t border-slate-200/60 pt-2 pl-6 text-xs text-slate-500 dark:border-slate-700/60 dark:text-slate-400">
+            <div>Task day: {fmtDate(x.day)}{x.recur ? ` · repeats ${RECUR_LABEL[x.recur].toLowerCase()}` : ''}</div>
+            {x.reminder && <div>Reminder: {reminderLabel(x.reminder)} on {x.reminder.date}</div>}
+            {subs.map((s) => <div key={s.id} className={s.done ? 'line-through' : ''}>{s.done ? '[x]' : '[ ]'} {s.text}</div>)}
+          </div>
+        )}
+      </li>
+    )
+  }
+
+  // newest / oldest sorts are grouped under the day they were archived
+  const grouped = sort === 'newest' || sort === 'oldest'
+  const groups = []
+  if (grouped) shown.forEach((x) => { const d = dayOf(x.archivedAt); const g = groups[groups.length - 1]; if (g && g.day === d) g.items.push(x); else groups.push({ day: d, items: [x] }) })
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-[1.5rem] p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <ArchiveIcon size={16} className="text-teal-500" />
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Archive</span>
+          <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{archive.length} task{archive.length === 1 ? '' : 's'}</span>
+          {Object.entries(ARCHIVE_REASONS).map(([k, l]) => byReason[k] > 0 && (
+            <span key={k} className="text-[11px] text-slate-400">{byReason[k]} {l.toLowerCase()}</span>
+          ))}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <select aria-label="Keep archived tasks" title="Old archived tasks are removed automatically" className={sel_} value={keepDays}
+              onChange={(e) => setKeepDays(+e.target.value)}>
+              {KEEP_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <button onClick={exportCSV} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export CSV</button>
+            <button onClick={exportJSON} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export JSON</button>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-slate-400">Deleted tasks, finished tasks cleared by the daily reset, and tasks replaced by an import all wait here until you restore or delete them for good.</p>
+      </div>
+
+      {archive.length === 0 ? (
+        <div className="glass rounded-[1.5rem] p-4"><EmptyState icon={ArchiveIcon} title="Archive is empty" copy="Deleted tasks will appear here, ready to restore." /></div>
+      ) : (
+        <>
+          <div className="glass rounded-[1.5rem] p-4 space-y-3">
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the archive…" aria-label="Search the archive"
+                className="glass-sm w-full rounded-full py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select aria-label="Why archived" className={sel_} value={reason} onChange={(e) => setReason(e.target.value)}>
+                <option value="all">Any reason</option>
+                {Object.entries(ARCHIVE_REASONS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+              <select aria-label="Category" className={sel_} value={cat} onChange={(e) => setCat(e.target.value)}>
+                <option value="all">Any category</option>
+                {catNames.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <select aria-label="Priority" className={sel_} value={pri} onChange={(e) => setPri(e.target.value)}>
+                <option value="all">Any priority</option>
+                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <select aria-label="Sort" className={sel_} value={sort} onChange={(e) => setSort(e.target.value)}>
+                {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <label className="flex items-center gap-1 text-[11px] text-slate-400">From
+                <input type="date" aria-label="Archived from" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={sel_} /></label>
+              <label className="flex items-center gap-1 text-[11px] text-slate-400">To
+                <input type="date" aria-label="Archived to" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={sel_} /></label>
+              {filtered && <button onClick={clearFilters} className="text-xs font-semibold text-teal-600 hover:underline dark:text-teal-400">Clear filters</button>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-3 dark:border-white/10">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <input type="checkbox" checked={allPicked} onChange={pickAll} disabled={!shown.length} aria-label="Select all shown" className="h-4 w-4 accent-teal-500" />
+                {picked.length ? `${picked.length} selected` : `Select all ${shown.length} shown`}
+              </label>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <button onClick={() => doRestore(picked.map((x) => x.id))} disabled={!picked.length}
+                  className={`${pill} bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-40`}>Restore selected</button>
+                {confirm === 'selected' ? (
+                  <>
+                    <button onClick={() => doDelete(picked.map((x) => x.id))} className={`${pill} bg-rose-500 text-white`}>Delete {picked.length} for good</button>
+                    <button onClick={() => setConfirm(null)} className={`${pill} text-slate-400`}>Cancel</button>
+                  </>
+                ) : (
+                  <button onClick={() => setConfirm('selected')} disabled={!picked.length}
+                    className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 dark:text-slate-300`}>Delete selected</button>
+                )}
+                {confirm === 'all' ? (
+                  <>
+                    <button onClick={() => doDelete(archive.map((x) => x.id))} className={`${pill} bg-rose-600 text-white`}>Yes, empty all {archive.length}</button>
+                    <button onClick={() => setConfirm(null)} className={`${pill} text-slate-400`}>Cancel</button>
+                  </>
+                ) : (
+                  <button onClick={() => setConfirm('all')} className={`${pill} text-rose-500 hover:bg-rose-500/10`}>Empty archive</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {shown.length === 0 ? (
+            <div className="glass rounded-[1.5rem] p-4"><EmptyState icon={Inbox} title="Nothing matches" copy="Try different filters or clear them." /></div>
+          ) : grouped ? (
+            groups.map((g) => (
+              <section key={g.day} aria-label={`Archived ${g.day}`}>
+                <h3 className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {g.day === todayStr() ? 'Today' : fmtDate(g.day)} <span className="font-normal normal-case text-slate-400">· {g.items.length}</span>
+                </h3>
+                <ul className="space-y-2">{g.items.map(row)}</ul>
+              </section>
+            ))
+          ) : (
+            <ul className="space-y-2">{shown.map(row)}</ul>
+          )}
+        </>
       )}
     </div>
   )
