@@ -60,12 +60,37 @@ export function alertTimes(task, now) {
   return out.slice(0, 16) // the id scheme has 16 slots per task
 }
 
-/** Replace every pending alarm with the current ones. `enabled` false (muted / no permission) just clears them. */
+/* Syncs never overlap: two running at once could interleave, so an older one re-schedules the alarm of a task the newer one
+   had just cancelled (a task ticked off a moment ago would still ring). Only the latest request matters, so it is kept. */
+let syncing = false
+let waiting = null
 export async function syncAndroidReminders(tasks, enabled) {
   if (!isAndroid()) return
+  waiting = { tasks, enabled }
+  if (syncing) return
+  syncing = true
   try {
+    while (waiting) {
+      const job = waiting
+      waiting = null
+      try { await syncOnce(job.tasks, job.enabled) } catch {
+        // plugin not ready or a call failed: try once more shortly, unless something newer came in
+        await new Promise((r) => setTimeout(r, 2000))
+        if (!waiting) { try { await syncOnce(job.tasks, job.enabled) } catch { /* in-app alerts still work */ } }
+      }
+    }
+  } finally { syncing = false }
+}
+
+/** Replace every pending alarm with the current ones. `enabled` false (muted / no permission) just clears them. */
+async function syncOnce(tasks, enabled) {
+  {
     const { notifications } = await LocalNotifications.getPending()
     if (notifications.length) await LocalNotifications.cancel({ notifications })
+    // a reminder that already rang and is still sitting in the notification shade goes away once its task is done
+    const gone = []
+    for (const t of tasks) if (t.done && t.reminder) for (let k = 0; k < 16; k++) gone.push(notificationId(t.id, k))
+    if (gone.length) await LocalNotifications.removeDeliveredNotificationsById({ ids: gone }).catch(() => {})
     if (!enabled) return
     const now = Date.now()
     const list = []
@@ -82,7 +107,7 @@ export async function syncAndroidReminders(tasks, enabled) {
       }))
     }
     if (list.length) await LocalNotifications.schedule({ notifications: list })
-  } catch { /* plugin not ready or permission missing: the in-app alerts still work */ }
+  }
 }
 
 /** One-time setup: notification channels (their importance decides the sound / pop-up) and the tap handler. */

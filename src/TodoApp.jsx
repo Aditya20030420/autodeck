@@ -526,6 +526,17 @@ export default function TodoApp() {
   //     showing due reminders regardless. Muting silences the sound + notifications.
   const mutedRef = useRef(muted)
   mutedRef.current = muted
+  const liveNotes = useRef(new Map())  // desktop alerts on screen, by task id
+  // A reminder that is still showing (a high-priority one stays until dismissed) goes away as soon as its task is completed,
+  // deleted, snoozed or has its reminder removed.
+  useEffect(() => {
+    const stale = (id) => {
+      const t = tasks.find((x) => x.id === id)
+      return !t || t.done || !t.reminder || isSuppressed(t.reminder, Date.now())
+    }
+    for (const [id, n] of liveNotes.current) if (stale(id)) { try { n.close() } catch { /* already gone */ } liveNotes.current.delete(id) }
+    swRegRef.current?.getNotifications?.().then((list) => list.forEach((n) => { if (n.tag && stale(n.tag)) n.close() })).catch(() => {})
+  }, [tasks])
   useEffect(() => {
     const check = () => {
       setNowTick(Date.now())  // keep the due-banner fresh even when muted
@@ -565,6 +576,7 @@ export default function TodoApp() {
             ] })
           } else {
             const n = new Notification(title, opts)
+            liveNotes.current.set(x.id, n)  // so it can be taken down when the task is finished
             // Clicking the toast brings the (possibly hidden-in-tray) window back.
             n.onclick = () => window.autodeck?.showWindow?.()
           }
@@ -750,8 +762,12 @@ export default function TodoApp() {
   // and open the task when its notification is tapped.
   useEffect(() => {
     if (!isAndroid()) return
-    const id = setTimeout(() => syncAndroidReminders(tasks, notify && !muted), 400)
-    return () => clearTimeout(id)
+    const run = () => syncAndroidReminders(tasks, notify && !muted)
+    const id = setTimeout(run, 150)
+    // leaving the app right after ticking a task off must not leave its alarm behind: sync at once when the app is hidden
+    const onHide = () => { if (document.hidden) { clearTimeout(id); run() } }
+    document.addEventListener('visibilitychange', onHide)
+    return () => { clearTimeout(id); document.removeEventListener('visibilitychange', onHide) }
   }, [tasks, notify, muted])
   useEffect(() => initAndroidReminders(viewTask), [viewTask])
 
