@@ -7,7 +7,7 @@ import {
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
-  Archive as ArchiveIcon, ArchiveRestore,
+  Archive as ArchiveIcon, ArchiveRestore, SignalLow, SignalMedium, SignalHigh, Tag, TriangleAlert, House,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -396,6 +396,25 @@ const PRIORITY_BADGE = {
   Low: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
   Medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   High: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+}
+// Symbols instead of plain dots: signal bars for priority, a fitting icon for each category (a tag for ones you add yourself)
+const PRIORITY_ICON = { Low: SignalLow, Medium: SignalMedium, High: SignalHigh }
+const PRIORITY_TEXT = { Low: 'text-slate-400', Medium: 'text-amber-500', High: 'text-rose-500' }
+function PriorityIcon({ p, size = 16 }) {
+  const I = PRIORITY_ICON[p] || SignalMedium
+  return <I size={size} strokeWidth={2.4} className={PRIORITY_TEXT[p] || PRIORITY_TEXT.Medium} aria-hidden="true" />
+}
+function categoryIconFor(name) {
+  const n = String(name).toLowerCase()
+  if (/work|office|job|business|project|client/.test(n)) return Briefcase
+  if (/personal|private|\bself\b|family|\bme\b/.test(n)) return User
+  if (/urgent|important|asap|critical/.test(n)) return TriangleAlert
+  if (/home|house|chore/.test(n)) return House
+  return Tag
+}
+function CategoryIcon({ name, color, size = 16 }) {
+  const I = categoryIconFor(name)
+  return <I size={size} strokeWidth={2.3} style={{ color }} aria-hidden="true" />
 }
 const PRIORITY_DOT = { Low: 'bg-slate-400', Medium: 'bg-amber-500', High: 'bg-rose-500' }
 // Status filters are fixed; category filters are appended dynamically from the
@@ -1238,7 +1257,7 @@ export default function TodoApp() {
               <button key={c.name} onClick={() => setFilter(c.name)}
                 style={active ? { backgroundColor: c.color, color: '#fff' } : { backgroundColor: `${c.color}1a`, color: c.color }}
                 className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97]">
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: active ? '#fff' : c.color }} />
+                <CategoryIcon name={c.name} color={active ? '#fff' : c.color} size={13} />
                 {c.name}
               </button>
             )
@@ -1789,11 +1808,11 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
               </Select>
               <Select label="Category" className={sel_} value={cat} onChange={(e) => setCat(e.target.value)}>
                 <option value="all">Any category</option>
-                {catNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                {catNames.map((n) => <option key={n} value={n} icon={<CategoryIcon name={n} color={catColor(categories, n)} size={14} />}>{n}</option>)}
               </Select>
               <Select label="Priority" className={sel_} value={pri} onChange={(e) => setPri(e.target.value)}>
                 <option value="all">Any priority</option>
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} size={14} />}>{p}</option>)}
               </Select>
               <Select label="Sort" className={sel_} value={sort} onChange={(e) => setSort(e.target.value)}>
                 {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -2013,14 +2032,14 @@ function SubOptions({ value, onChange, categories, task, remDefaults, remKey = 0
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <ChipSelect label="Subtask priority" value={prio} onChange={(e) => onChange({ priority: e.target.value })}
-        lead={<span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_DOT[prio || task.priority] || PRIORITY_DOT.Medium}`} />}>
-        <option value="">Same priority</option>
-        {PRIORITIES.map((p) => <option key={p} value={p} dotClass={PRIORITY_DOT[p]}>{p} priority</option>)}
+        lead={<PriorityIcon p={prio || task.priority} />}>
+        <option value="" icon={<PriorityIcon p={task.priority} />}>Same priority</option>
+        {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} />}>{p} priority</option>)}
       </ChipSelect>
       <ChipSelect label="Subtask category" value={cat} onChange={(e) => onChange({ category: e.target.value })}
-        lead={<span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor(categories, cat || task.category) }} />}>
-        <option value="">Same category</option>
-        {categories.map((c) => <option key={c.name} value={c.name} dotColor={c.color}>{c.name}</option>)}
+        lead={<CategoryIcon name={cat || task.category} color={catColor(categories, cat || task.category)} />}>
+        <option value="" icon={<CategoryIcon name={task.category} color={catColor(categories, task.category)} />}>Same category</option>
+        {categories.map((c) => <option key={c.name} value={c.name} icon={<CategoryIcon name={c.name} color={c.color} />}>{c.name}</option>)}
       </ChipSelect>
       <ChipSelect label="Subtask repeat" value={value.recur || ''} onChange={(e) => onChange({ recur: e.target.value })} lead={<RotateCw size={13} strokeWidth={2.2} />}>
         {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
@@ -2064,7 +2083,7 @@ function Select({ value, onChange, label, title, className = '', lead, disabled,
 
   const all = Children.toArray(children).filter((c) => isValidElement(c) && c.type === 'option').map((c) => ({
     value: String(c.props.value ?? ''), label: Children.toArray(c.props.children).join(''), disabled: !!c.props.disabled,
-    dotClass: c.props.dotClass, dotColor: c.props.dotColor,
+    dotClass: c.props.dotClass, dotColor: c.props.dotColor, icon: c.props.icon,
   }))
   const chosen = all.find((o) => o.value === String(value ?? ''))
   const shown = all.filter((o) => !(o.value === '' && o.disabled))  // the placeholder is only the button's text, not a choice
@@ -2158,7 +2177,8 @@ function Select({ value, onChange, label, title, className = '', lead, disabled,
                 onMouseEnter={() => !o.disabled && setActive(i)} onClick={() => pick(o)}
                 className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 transition-colors ${o.disabled ? 'cursor-default opacity-40' : ''} ${
                   i === active && !o.disabled ? 'bg-sky-500/10 dark:bg-sky-400/10' : ''} ${sel ? 'font-semibold text-sky-700 dark:text-sky-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                {(o.dotClass || o.dotColor) && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${o.dotClass || ''}`} style={o.dotColor ? { backgroundColor: o.dotColor } : undefined} />}
+                {o.icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{o.icon}</span>}
+                {!o.icon && (o.dotClass || o.dotColor) && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${o.dotClass || ''}`} style={o.dotColor ? { backgroundColor: o.dotColor } : undefined} />}
                 <span className="min-w-0 flex-1 whitespace-nowrap">{o.label}</span>
                 {sel && <Check size={14} strokeWidth={2.6} className="shrink-0" />}
               </li>
@@ -2286,7 +2306,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
   }
 
   const subCount = subs.length + (subDraft.trim() ? 1 : 0)
-  const catDot = (name) => <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor(categories, name) }} />
+  const catDot = (name) => <CategoryIcon name={name} color={catColor(categories, name)} />
 
   return (
     <form onSubmit={submit}
@@ -2311,11 +2331,11 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
-          lead={<span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_DOT[priority]}`} />}>
-          {PRIORITIES.map((p) => <option key={p} value={p} dotClass={PRIORITY_DOT[p]}>{p} priority</option>)}
+          lead={<PriorityIcon p={priority} />}>
+          {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} />}>{p} priority</option>)}
         </ChipSelect>
         <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} lead={catDot(category)}>
-          {categories.map((c) => <option key={c.name} value={c.name} dotColor={c.color}>{c.name}</option>)}
+          {categories.map((c) => <option key={c.name} value={c.name} icon={<CategoryIcon name={c.name} color={c.color} />}>{c.name}</option>)}
         </ChipSelect>
         <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
           {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
