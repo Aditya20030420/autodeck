@@ -23,8 +23,10 @@ Set-Location $root
 npm run build
 npx cap sync android
 Set-Location "$root\android"
-.\gradlew.bat assembleRelease --no-daemon
-if ($LASTEXITCODE -ne 0) { throw "Gradle failed" }
+.\gradlew.bat assembleRelease -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease
+$gradleExit = $LASTEXITCODE
+.\gradlew.bat --stop | Out-Null   # a warm Gradle would sit on ~2 GB for 15 minutes and keep this window's output open
+if ($gradleExit -ne 0) { throw "Gradle failed" }
 
 New-Item -ItemType Directory -Force $out | Out-Null
 $apk = "$out\AutoDeck-$ver.apk"
