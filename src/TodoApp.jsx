@@ -404,6 +404,16 @@ function PriorityIcon({ p, size = 16 }) {
   const I = PRIORITY_ICON[p] || SignalMedium
   return <I size={size} strokeWidth={2.4} className={PRIORITY_TEXT[p] || PRIORITY_TEXT.Medium} aria-hidden="true" />
 }
+const PRIORITY_TINT = { Low: 'bg-slate-500/15', Medium: 'bg-amber-500/15', High: 'bg-rose-500/15' }
+/** The priority symbol in a small rounded tile (cards, banner, week view, archive). */
+function PriorityChip({ p, size = 15 }) {
+  return (
+    <span className={`flex shrink-0 items-center justify-center rounded-lg ${PRIORITY_TINT[p] || PRIORITY_TINT.Medium}`}
+      style={{ width: size + 9, height: size + 9 }} title={`${p} priority`}>
+      <PriorityIcon p={p} size={size} />
+    </span>
+  )
+}
 function categoryIconFor(name) {
   const n = String(name).toLowerCase()
   if (/work|office|job|business|project|client/.test(n)) return Briefcase
@@ -416,7 +426,6 @@ function CategoryIcon({ name, color, size = 16 }) {
   const I = categoryIconFor(name)
   return <I size={size} strokeWidth={2.3} style={{ color }} aria-hidden="true" />
 }
-const PRIORITY_DOT = { Low: 'bg-slate-400', Medium: 'bg-amber-500', High: 'bg-rose-500' }
 // Status filters are fixed; category filters are appended dynamically from the
 // user's categories at render time.
 const STATUS_FILTERS = ['All', 'Active', 'Completed', 'High Priority']
@@ -761,6 +770,16 @@ export default function TodoApp() {
   const pending = visible.filter((x) => !x.done)
   const completed = visible.filter((x) => x.done)
   const highPending = todays.filter((x) => !x.done && x.priority === 'High').length
+  // how many tasks each filter pill would show (searching doesn't change them)
+  const filterCount = useMemo(() => {
+    const c = { All: todays.length, Active: 0, Completed: 0, 'High Priority': 0 }
+    for (const x of todays) {
+      if (x.done) c.Completed++; else c.Active++
+      if (x.priority === 'High') c['High Priority']++
+      c[x.category] = (c[x.category] || 0) + 1
+    }
+    return c
+  }, [todays])
   // Next upcoming reminder (across all pending tasks, any date) for the header chip.
   const nextReminder = useMemo(() => {
     const up = items
@@ -1248,6 +1267,7 @@ export default function TodoApp() {
                 className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] [&_svg]:transition-transform hover:[&_svg]:scale-110 ${
                   FILTER_STYLE[f][filter === f ? 0 : 1]}`}>
                 <Icon size={13} strokeWidth={2.2} />{f}
+                <span className="rounded-full bg-black/10 px-1.5 text-[10px] font-bold tabular-nums dark:bg-white/10">{filterCount[f] || 0}</span>
               </button>
             )
           })}
@@ -1259,6 +1279,7 @@ export default function TodoApp() {
                 className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold ring-1 ring-inset transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97]">
                 <CategoryIcon name={c.name} color={active ? '#fff' : c.color} size={13} />
                 {c.name}
+                <span className="rounded-full bg-black/10 px-1.5 text-[10px] font-bold tabular-nums dark:bg-white/10">{filterCount[c.name] || 0}</span>
               </button>
             )
           })}
@@ -1726,7 +1747,7 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
       <li key={x.id} className="glass-sm rounded-2xl border-l-[3px] px-3 py-2.5" style={{ borderLeftColor: catColor(categories, x.category) }}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <input type="checkbox" checked={sel.has(x.id)} onChange={() => toggle(x.id)} aria-label={`Select ${x.text}`} className="h-4 w-4 shrink-0 accent-teal-500" />
-          <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
+          <PriorityChip p={x.priority} size={13} />
           <button onClick={() => setOpenId(open ? null : x.id)} aria-expanded={open}
             className={`min-w-[9rem] flex-1 break-words text-left text-sm ${open ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : ''}`}>{x.text}</button>
           <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -1747,7 +1768,9 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${PRIORITY_BADGE[x.priority]}`}>{x.priority}</span>
-          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, x.category)}>{x.category}</span>
+          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, x.category)}>
+            <CategoryIcon name={x.category} color="currentColor" size={11} />{x.category}
+          </span>
           <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-slate-500 sm:text-[11px] dark:text-slate-400">{ARCHIVE_REASONS[x.reason]}</span>
           {x.done && <span className="rounded-full bg-lime-500/15 px-2 py-0.5 text-[10px] font-semibold text-lime-700 sm:text-[11px] dark:text-lime-300">Was done</span>}
           {subs.length > 0 && <span className="text-[11px] text-slate-400">{subs.filter((s) => s.done).length}/{subs.length} subtasks</span>}
@@ -1895,7 +1918,7 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
                         </button>
                         <button onClick={() => setOpenId(openId === x.id ? null : x.id)} aria-expanded={openId === x.id}
                           className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[x.priority]}`} />
+                          <PriorityChip p={x.priority} size={12} />
                           {/* two lines; the tap that opens the details also shows the whole title */}
                           <span className={`min-w-0 flex-1 break-words text-xs ${openId === x.id ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{x.text}</span>
                           {showDate && <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{x.day.slice(5)}</span>}
@@ -2168,7 +2191,7 @@ function Select({ value, onChange, label, title, className = '', lead, disabled,
       {open && createPortal(
         <ul ref={list} id={id} role="listbox" aria-label={label}
           style={{ left: pos.left, top: pos.top, minWidth: Math.max(pos.minWidth, 150), maxWidth: 'calc(100vw - 16px)' }}
-          className="animate-fade-up fixed z-[70] max-h-72 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-1 text-sm shadow-soft backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95">
+          className="thin-scroll animate-fade-up fixed z-[70] max-h-72 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-1 text-sm shadow-soft backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95">
           {shown.map((o, i) => {
             const sel = o.value === String(value ?? '')
             return (
@@ -2470,7 +2493,7 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
       id={`task-${task.id}`}
       aria-label={`${task.text}. ${task.priority} priority, ${task.category}.${task.reminder ? ` Reminder ${reminderLabel(task.reminder)}.` : ''}${overdue ? ' Overdue.' : ''}${subs.length ? ` ${doneSubs} of ${subs.length} subtasks done.` : ''}${task.done ? ' Done.' : ''}`}
       style={{ ...dragStyle, animationDelay: `${Math.min(index, 8) * 40}ms`, borderLeftColor: catColor(categories, task.category) }}
-      className={`glass-sm group animate-fade-up relative rounded-2xl border-l-[3px] px-3 py-2.5 transition-shadow ${
+      className={`glass-sm group animate-fade-up relative rounded-2xl border-l-[3px] px-3 py-2.5 transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-soft ${
       highlight ? 'ring-2 ring-sky-500/70 soft-pulse' : task.pinned ? 'ring-1 ring-sky-400/40' : ''} ${isDragging ? 'z-10 opacity-60 shadow-soft' : ''}`}>
       {/* wraps: on a narrow screen the action buttons drop under the title instead of squeezing it to nothing */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -2494,7 +2517,7 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
           {task.done && <Check size={13} strokeWidth={3} className="animate-pop" />}
         </button>
 
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} title={`${task.priority} priority`} />
+        <PriorityChip p={task.priority} size={15} />
 
         {/* text / inline edit */}
         {editing ? (
@@ -2544,7 +2567,9 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
       {/* badges row — wraps under the title so it never crowds the task text */}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
-        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, task.category)}>{task.category}</span>
+        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, task.category)}>
+          <CategoryIcon name={task.category} color="currentColor" size={11} />{task.category}
+        </span>
         {task.recur && (
           <span className="flex items-center gap-0.5 rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold text-teal-700 sm:text-[11px] dark:text-teal-300" title={`Repeats: ${RECUR_LABEL[task.recur]}`}>
             <RotateCw size={10} /> {RECUR_LABEL[task.recur]}
@@ -2697,14 +2722,14 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, o
           </button>
         </div>
       </div>
-      {!collapsed && <ul className="max-h-[max(9rem,33vh)] space-y-1.5 overflow-y-auto pr-1">
+      {!collapsed && <ul className="thin-scroll max-h-[max(9rem,33vh)] space-y-1.5 overflow-y-auto pr-1">
         {items.map((task) => {
           const od = overdueMins(task.reminder, nowTick)
           const ps = PRI_STYLE[task.priority]
           return (
             <li key={task.id} style={{ borderLeftColor: ps.accent }}
               className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-xl border-l-[3px] bg-white/60 px-3 py-2 dark:bg-slate-900/40">
-              <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority]}`} />
+              <PriorityChip p={task.priority} size={14} />
               {/* a reminder shows the whole task, however long */}
               <span className="min-w-0 flex-1 break-words text-sm font-medium text-slate-800 dark:text-slate-100">{task.text}</span>
               {od > 0 && <span className="shrink-0 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300">OVERDUE {fmtDur(od)}</span>}

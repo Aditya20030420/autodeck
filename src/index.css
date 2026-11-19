@@ -174,3 +174,8 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
 .native * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
 .native body { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 .native input, .native textarea, .native [contenteditable] { user-select: text; -webkit-user-select: text; }
+
+/* slim, quiet scrollbars for the lists that scroll on their own (dropdowns, the reminder banner) */
+.thin-scroll { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.45) transparent; }
+.thin-scroll::-webkit-scrollbar { width: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
