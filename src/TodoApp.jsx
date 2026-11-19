@@ -51,11 +51,12 @@ const safe = {
 }
 
 /** Persisted state hook: like useState but mirrored to localStorage under `key`. */
-function useLocalStorage(key, initial) {
+function useLocalStorage(key, initial, revive = (v) => v) {
   const [value, setValue] = useState(() => {
     const raw = safe.get(key)
     if (raw == null) return typeof initial === 'function' ? initial() : initial
-    try { return JSON.parse(raw) } catch { return initial }
+    // `revive` upgrades older saved shapes before the first render, so an old save can't crash the page
+    try { return revive(JSON.parse(raw)) } catch { return initial }
   })
   useEffect(() => { safe.set(key, JSON.stringify(value)) }, [key, value])
   return [value, setValue]
@@ -64,15 +65,16 @@ function useLocalStorage(key, initial) {
 /* A backup file is someone else's data until proven otherwise: keep only the fields the app knows, in the shapes it expects,
    with sensible limits, so a damaged or hostile file can't crash the app or fill its storage. */
 const clip = (v, n) => (typeof v === 'string' ? v : '').slice(0, n)
-const isDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const isTime = (v) => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)
+const isDay = (v) =>typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const fin = (v, d) => (Number.isFinite(v) ? v : d)
 function sanitizeImported(list) {
   return list.slice(0, 5000).filter((x) => x && typeof x === 'object' && typeof x.text === 'string').map((x, i) => {
     const r = x.reminder
     const reminder = r && typeof r === 'object'
-      ? { date: isDay(r.date) ? r.date : todayStr(), time: /^\d{2}:\d{2}$/.test(String(r.time)) ? String(r.time) : '09:00',
+      ? { date: isDay(r.date) ? r.date : todayStr(), time: isTime(r.time) ? r.time : '09:00',
           lead: fin(r.lead, 0), repeat: fin(r.repeat, 0), lastAlert: fin(r.lastAlert, null), snoozeUntil: fin(r.snoozeUntil, null) }
-      : (typeof r === 'string' && /^\d{2}:\d{2}$/.test(r) ? r : null)
+      : (isTime(r) ? r : null)
     return {
       id: clip(String(x.id ?? ''), 64) || crypto.randomUUID(),
       text: clip(x.text, 2000), priority: PRIORITIES.includes(x.priority) ? x.priority : 'Medium',
@@ -177,8 +179,10 @@ function fmtTime(hhmm) {
    those to today's date. ------------------------------------------------------ */
 function migrateReminder(r) {
   if (!r) return null
-  if (typeof r === 'string') return { date: todayStr(), time: r, lead: 0, repeat: 0, lastAlert: null }
-  return { date: r.date || todayStr(), time: r.time, lead: r.lead || 0, repeat: r.repeat || 0, lastAlert: r.lastAlert ?? null }
+  if (typeof r === 'string') return isTime(r) ? { date: todayStr(), time: r, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null
+  if (!isTime(r.time)) return null  // a reminder without a usable time can't fire (and used to crash the page)
+  // snoozeUntil must survive a restart, or every snoozed or dismissed reminder pops back up on the next launch
+  return { date: r.date || todayStr(), time: r.time, lead: r.lead || 0, repeat: r.repeat || 0, lastAlert: r.lastAlert ?? null, snoozeUntil: r.snoozeUntil ?? null }
 }
 /** The moment a reminder first fires (event time minus lead). */
 function reminderTrigger(r) {
@@ -340,7 +344,7 @@ function playSfx(name) {
 // ============================================================================
 
 export default function TodoApp() {
-  const [tasks, setTasks] = useLocalStorage('todo.tasks', [])
+  const [tasks, setTasks] = useLocalStorage('todo.tasks', [], (v) => normalizeForToday(sanitizeImported(Array.isArray(v) ? v : [])))
   const [dark, setDark] = useLocalStorage('todo.dark', () =>
     window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   const [filter, setFilter] = useState('All')
@@ -420,8 +424,10 @@ export default function TodoApp() {
     }
   }, [])
 
-  // One-time normalization for the new day.
-  useEffect(() => { setTasks((prev) => normalizeForToday(prev)) }, [setTasks])
+  // Normalise for the new day: on load, and again when midnight passes with the app left open
+  // (nowTick re-renders every 20 s, so `today` changes by itself).
+  const today = todayStr()
+  useEffect(() => { setTasks((prev) => normalizeForToday(prev)) }, [setTasks, today])
 
   // Apply theme class to <html>.
   useEffect(() => {
@@ -1391,11 +1397,11 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
     postponed and future recurring tasks show up on the right day. */
 function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
   const [openId, setOpenId] = useState(null)  // task whose action row is expanded
-  const days = useMemo(() => {
+  const t0 = todayStr()
+  const days = useMemo(() => {  // rebuilt when the date changes, so the week doesn't go stale past midnight
     const base = new Date()
     return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d })
-  }, [])
-  const t0 = todayStr()
+  }, [t0])
   const lastDay = dateStr(days[6])
   // Tasks scheduled beyond the 7 shown days would otherwise be invisible.
   const later = tasks.filter((x) => x.day > lastDay).sort((a, b) => a.day.localeCompare(b.day) || (a.done - b.done))
@@ -2037,7 +2043,8 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
   }, [onClose])
   const addCat = () => {
     const name = newCat.trim()
-    if (!name || categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) return
+    // a category called "All" or "Active" would collide with the status filters beside it
+    if (!name || [...STATUS_FILTERS, ...categories.map((c) => c.name)].some((n) => n.toLowerCase() === name.toLowerCase())) return
     setCategories([...categories, { name, color: newColor }])
     setNewCat('')
   }
