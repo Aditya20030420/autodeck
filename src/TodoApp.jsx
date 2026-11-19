@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { isAndroid, androidNotifyGranted, androidRequestNotify, syncAndroidReminders, initAndroidReminders } from './androidReminders.js'
 import {
   Plus, Search, Check, Pencil, Trash2, CalendarArrowUp, Copy, Pin, PinOff,
@@ -59,6 +59,16 @@ function useLocalStorage(key, initial, revive = (v) => v) {
     try { return revive(JSON.parse(raw)) } catch { return initial }
   })
   useEffect(() => { safe.set(key, JSON.stringify(value)) }, [key, value])
+  // Another tab or window of the same page saved something: take it, so the two never overwrite each other's changes.
+  // (The browser only raises this event for a change that really differs, so the write above can't ping-pong.)
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== key || e.newValue == null) return
+      try { setValue(revive(JSON.parse(e.newValue))) } catch { /* unreadable: keep what we have */ }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   return [value, setValue]
 }
 
@@ -129,13 +139,14 @@ function parseQuickAdd(raw, categories = DEFAULT_CATEGORIES) {
   let category, priority, reminder
 
   const catMap = Object.fromEntries(categories.map((c) => [c.name.toLowerCase(), c.name]))
-  text = text.replace(/#(\w+)/g, (m, tag) => {
+  // a tag only counts at the start of a word, so "wow!high" and a link ending "/#work" are left alone
+  text = text.replace(/(\s)#(\w+)/g, (m, sp, tag) => {
     const c = catMap[tag.toLowerCase()]
     if (c) { category = c; return ' ' }
     return m
   })
 
-  text = text.replace(/!(high|medium|med|low)\b/i, (m, p) => {
+  text = text.replace(/(\s)!(high|medium|med|low)\b/i, (m, sp, p) => {
     priority = { high: 'High', medium: 'Medium', med: 'Medium', low: 'Low' }[p.toLowerCase()]
     return ' '
   })
@@ -156,7 +167,11 @@ function parseQuickAdd(raw, categories = DEFAULT_CATEGORIES) {
     if (h < 24 && min < 60) { reminder = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`; text = text.replace(t24[0], ' ') }
   }
 
-  return { text: text.replace(/\s{2,}/g, ' ').trim(), category, priority, reminder }
+  // "…at 5pm tomorrow": the reminder is for tomorrow, and the word itself is left out of the title
+  let tomorrow = false
+  if (reminder && /\btomorrow\b/i.test(text)) { tomorrow = true; text = text.replace(/\btomorrow\b/i, ' ') }
+
+  return { text: text.replace(/\s{2,}/g, ' ').trim(), category, priority, reminder, tomorrow }
 }
 
 /** "17:30" → "5:30 PM" for display. */
@@ -647,17 +662,18 @@ export default function TodoApp() {
     const onMsg = (e) => {
       const m = e.data
       if (!m || m.type !== 'reminder-action') return
-      if (m.action === 'done') toggle(m.taskId)
+      if (m.action === 'done') patch(m.taskId, (x) => ({ ...x, done: true }))  // "Done" never un-does a finished task
       else if (m.action === 'snooze') snoozeReminder(m.taskId, 10)
       else viewTask(m.taskId)
     }
     navigator.serviceWorker.addEventListener('message', onMsg)
     return () => navigator.serviceWorker.removeEventListener('message', onMsg)
-  }, [toggle, snoozeReminder, viewTask])
+  }, [patch, snoozeReminder, viewTask])
 
   // Move a task to any day (YYYY-MM-DD). Its reminder follows the day and re-arms;
   // a finished task becomes pending again when it lands on a different day.
   const reschedule = useCallback((id, day) => {
+    if (day < todayStr()) day = todayStr()  // a typed past date would hide the task from every view
     patch(id, (x) => ({
       ...x, day, done: x.day === day ? x.done : false,
       reminder: x.reminder ? { ...x.reminder, date: day, lastAlert: null, snoozeUntil: null } : null,
@@ -1267,7 +1283,7 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
       <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] p-4">
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
           <ClipboardList size={16} className="text-teal-500" />
-          <input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value)}
+          <input type="date" value={date} max={todayStr()} onChange={(e) => { if (e.target.value) setDate(e.target.value) }}
             className="glass-sm rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
         </label>
         <span className={`rounded-full px-3 py-1 text-xs font-bold ${status === 'Finalized' ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}`}>
@@ -1555,7 +1571,7 @@ function ReminderEditor({ initial, onChange, defaults }) {
   const [repeatCustom, setRepeatCustom] = useState(!!initial && initial.repeat > 0 && !inPreset(REPEAT_OPTIONS, initial.repeat))
 
   useEffect(() => {
-    onChange(on && time ? { date: date || todayStr(), time, lead: +lead || 0, repeat: +repeat || 0 } : null)
+    onChange(on && time ? { date: date || todayStr(), time, lead: Math.max(0, +lead || 0), repeat: Math.max(0, +repeat || 0) } : null)
     // onChange is a stable setter; re-emitting only when inputs change is intended.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on, date, time, lead, repeat])
@@ -1613,7 +1629,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
     // Manual editor wins; otherwise fall back to a natural-language time (today, once).
     const reminder = rem
       ? { ...rem, lastAlert: null, snoozeUntil: null }
-      : (p.reminder ? { date: todayStr(), time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null)
+      : (p.reminder ? { date: p.tomorrow ? dateStr(new Date(Date.now() + 864e5)) : todayStr(), time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null)
     onAdd({
       text: p.text,
       priority: p.priority || priority,
@@ -1635,7 +1651,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Try: Email Sam at 5pm #work !high"
-          aria-label="New task"
+          aria-label="New task" maxLength={2000}
           autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
           className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
         />
@@ -1679,7 +1695,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           )}
           {parsed.reminder && (
             <span className="inline-flex items-center gap-1 rounded-full bg-lime-500/15 px-2 py-0.5 font-semibold text-lime-700 dark:text-lime-300">
-              <Bell size={11} />{fmtTime(parsed.reminder)}
+              <Bell size={11} />{parsed.tomorrow ? 'Tomorrow ' : ''}{fmtTime(parsed.reminder)}
             </span>
           )}
         </div>
@@ -1693,12 +1709,15 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 function SortableTaskCard(props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.task.id })
-  const dragStyle = { transform: CSS.Transform.toString(transform), transition }
-  return <TaskCard {...props} dragRef={setNodeRef} dragStyle={dragStyle} isDragging={isDragging}
-    handleProps={{ ...attributes, ...listeners }} />
+  // steady values, so the memoised card below only re-renders when its own task changes
+  const tr = CSS.Transform.toString(transform)
+  const dragStyle = useMemo(() => ({ transform: tr, transition }), [tr, transition])
+  const handleProps = useMemo(() => ({ ...attributes, ...listeners }), [attributes, listeners])
+  return <TaskCard {...props} dragRef={setNodeRef} dragStyle={dragStyle} isDragging={isDragging} handleProps={handleProps} />
 }
 
-function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), categories = DEFAULT_CATEGORIES, onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
+// memo: ticking one task off no longer re-draws every other card (slow with a couple of hundred tasks)
+const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), categories = DEFAULT_CATEGORIES, onToggle, onEdit, onRename, onDelete, onPostpone, onDuplicate, onPin,
   onEditReminder, onAddSubtask, onToggleSubtask, onRemoveSubtask, dragRef, dragStyle, handleProps, isDragging }) {
   const [draft, setDraft] = useState(task.text)
   const [expanded, setExpanded] = useState(false)
@@ -1749,7 +1768,7 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), c
         {/* text / inline edit */}
         {editing ? (
           <input
-            autoFocus
+            autoFocus maxLength={2000}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => onRename(task.id, draft)}
@@ -1866,7 +1885,7 @@ function TaskCard({ task, index = 0, editing, highlight, nowTick = Date.now(), c
       )}
     </li>
   )
-}
+})
 
 /* ----------------------------- Reminder banner ----------------------------- */
 // Per-priority banner styling — High is the most urgent, Low the calmest.

@@ -95,6 +95,7 @@ app.on('before-quit', () => { quitting = true })
 app.on('second-instance', showWindow)
 
 app.whenReady().then(() => {
+  if (!app.hasSingleInstanceLock()) return // a second copy is quitting; it must not open a window or tray icon of its own
   // Do not set an AppUserModelId here: the installed shortcuts and the taskbar pin carry Electron's default
   // ("electron.app.AutoDeck"), and a different id makes the running app a second taskbar button.
   loadPrefs()

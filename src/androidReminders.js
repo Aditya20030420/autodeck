@@ -70,7 +70,8 @@ export async function syncAndroidReminders(tasks, enabled) {
     const now = Date.now()
     const list = []
     for (const t of tasks) {
-      if (t.done || !t.reminder) continue
+      // a finished recurring task still needs its alarms for the coming days (alertTimes skips the finished one itself)
+      if (!t.reminder || (t.done && !t.recur)) continue
       alertTimes(t, now).forEach((at, k) => list.push({
         id: notificationId(t.id, k),
         title: `${t.priority === 'High' ? '🔴 ' : ''}Reminder · ${t.priority} priority`,
