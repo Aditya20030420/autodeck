@@ -254,6 +254,24 @@ const overdueMins = (r, now) => Math.max(0, Math.floor((now - reminderEventTime(
 const fmtDur = (m) => (m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`)
 /** Human frequency for the upcoming-reminders table. */
 const freqLabel = (r) => r.repeat ? `Every ${r.repeat} min` : r.lead ? `${r.lead} min before` : 'Once'
+/** The next future moment any reminder needs attention (its time, a snooze ending, a repeat), or null. Anything already due is
+    handled by the alert check itself, so only moments after `now` count here. */
+function nextAlertAt(tasks, now) {
+  let best = Infinity
+  for (const x of tasks) {
+    const r = x.reminder
+    if (x.done || !r || r.snoozeUntil === DISMISSED) continue
+    let at
+    if (r.snoozeUntil && r.snoozeUntil > now) at = r.snoozeUntil
+    else {
+      const trig = reminderTrigger(r).getTime()
+      if (trig > now) at = trig
+      else if (r.repeat > 0 && r.lastAlert) at = r.lastAlert + r.repeat * 60000
+    }
+    if (at !== undefined && at > now && at < best) best = at
+  }
+  return best === Infinity ? null : best
+}
 /** Pick the alert sound for a priority level. */
 const prioritySfx = (priority) => (priority === 'High' ? 'alarm' : priority === 'Medium' ? 'reminder' : 'soft')
 
@@ -559,10 +577,32 @@ export default function TodoApp() {
       const ids = new Set(toAlert.map((x) => x.id))
       setTasks((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, reminder: { ...x.reminder, lastAlert: now } } : x)))
     }
-    check()
-    const id = setInterval(check, 20000)
-    return () => clearInterval(id)
-  }, [setTasks])
+    // Exact timing: a timer is set for the very next moment anything is due (a reminder's time, the end of a snooze, the next
+    // repeat) instead of waiting for a polling beat, so alerts fire at the scheduled second, not up to 20 s late.
+    let timer = null
+    const arm = () => {
+      clearTimeout(timer)
+      if (mutedRef.current) return
+      const at = nextAlertAt(tasksRef.current, Date.now())
+      if (at != null) timer = setTimeout(run, Math.min(Math.max(0, at - Date.now()) + 15, 2 ** 31 - 1))
+    }
+    const run = () => { check(); arm() }
+    // Coming back (window shown, tab visible, PC woke from sleep) must not wait for the next timer: a sleeping PC pauses them.
+    const onWake = () => { if (!document.hidden) run() }
+    run()
+    const id = setInterval(run, 20000)  // safety net, and keeps the on-screen clock and "overdue" badges fresh
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('online', onWake)
+    window.addEventListener('autodeck-wake', onWake)  // sent by the desktop shell when Windows resumes from sleep
+    return () => {
+      clearTimeout(timer); clearInterval(id)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('online', onWake)
+      window.removeEventListener('autodeck-wake', onWake)
+    }
+  }, [setTasks, tasks, muted])
 
   // --- derived: today's tasks, counts, progress ---
   const t = todayStr()

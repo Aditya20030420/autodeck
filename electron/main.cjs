@@ -19,6 +19,11 @@ const openOutside = (url) => { try { if (['http:', 'https:'].includes(new URL(ur
 // IPC calls are only answered for AutoDeck's own page, never for anything else that might get loaded
 const ownPage = (e) => { try { return new URL(e.senderFrame.url).protocol === 'file:' } catch { return false } }
 
+// Reminders are timed inside the page, so Chromium must not slow its timers when the window is minimized, covered or hidden.
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
+
 let win = null
 let tray = null
 let quitting = false
@@ -110,6 +115,10 @@ app.whenReady().then(() => {
   ipcMain.on('win:show', (e) => { if (ownPage(e)) showWindow() })
   createWindow(!startHidden)
   createTray()
+  // A PC that slept pauses the page's timers: when Windows wakes, tell the page to check its reminders at once.
+  powerMonitor.on('resume', () => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.executeJavaScript("window.dispatchEvent(new Event('autodeck-wake'))").catch(() => {}))
+  })
   // Auto-update from GitHub Releases (installed build only).
   if (app.isPackaged) {
     try {
