@@ -196,3 +196,9 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 28px), transparent);
   mask-image: linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 28px), transparent);
 }
+
+/* The page's own scrollbar: the same slim teal thumb (pseudo-elements only, so the gradient shows in Chromium/Electron). */
+html::-webkit-scrollbar { width: 12px; }
+html::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(45,212,191,.55), rgba(14,165,233,.55)); border-radius: 9999px; border: 3px solid transparent; background-clip: content-box; }
+html::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(45,212,191,.95), rgba(14,165,233,.95)); background-clip: content-box; }
