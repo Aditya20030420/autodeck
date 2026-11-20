@@ -1407,6 +1407,7 @@ export default function TodoApp() {
           ))}
         </div>
 
+        <div key={view} className="animate-view">
         {view === 'report' ? (
           <DailyReport tasks={tasks} onAddGoal={addTask} onToggleGoal={toggle} />
         ) : view === 'archive' ? (
@@ -1506,6 +1507,7 @@ export default function TodoApp() {
         </div>
         </>
         )}
+        </div>
       </div>
 
       {/* Undo toast — restore an accidentally deleted task */}
@@ -2802,10 +2804,10 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
         <button
           onClick={() => onToggle(task.id)}
           aria-label={task.done ? 'Mark incomplete' : 'Mark complete'}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition duration-200 active:scale-90 ${
             task.done
-              ? 'border-transparent bg-lime-500 text-white'
-              : 'border-slate-300 hover:border-sky-500 dark:border-slate-600'
+              ? 'border-transparent bg-lime-500 text-white shadow-[0_0_0_3px_rgba(132,204,22,0.18)]'
+              : 'border-slate-300 hover:scale-110 hover:border-sky-500 dark:border-slate-600'
           }`}
         >
           {task.done && <Check size={13} strokeWidth={3} className="animate-pop" />}
@@ -3193,7 +3195,7 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="animate-fade-in absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div role="dialog" aria-label="Settings"
         className="glass animate-fade-up relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-[1.5rem] shadow-soft">
         <div className={`flex shrink-0 items-center gap-2 px-6 pb-3 pt-6 transition-shadow duration-200 ${edge.top ? 'shadow-[0_8px_14px_-12px_rgba(0,0,0,0.5)]' : ''}`}>
