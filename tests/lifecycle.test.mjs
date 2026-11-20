@@ -140,6 +140,7 @@ test('merging the Archive: union, later archiving wins, entries for restored tas
   assert.deepEqual(m.map((x) => x.id), ['b', 'a'])
   const mine = [{ id: 'a', archivedAt: 5 }]; assert.equal(mergeArchive(mine, [{ id: 'a', archivedAt: 4 }], []), mine)
   assert.deepEqual(mergeArchive([], [{ id: 'r', archivedAt: 5 }], [task({ id: 'r', updatedAt: 99 })]), [])
+  assert.deepEqual(mergeArchive([], [{ id: 'p', archivedAt: 5 }], [], new Set(['p'])), [])  // deleted for good: the saved copy can't bring it back
 })
 
 test('Android: a completed repeating task keeps the coming days\' alarms until its next occurrence exists; after that the new task carries them', () => {

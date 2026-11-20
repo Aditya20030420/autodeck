@@ -237,8 +237,9 @@ function mergeTasks(mine, theirs, tomb) {
   const kept = out.filter((x) => !(tomb.has(x.id) && tomb.get(x.id) > (x.updatedAt || 0)))
   return changed || kept.length !== out.length ? kept : mine
 }
-/** Same idea for the Archive: union by id, the later archiving wins, and an entry whose task was restored since is dropped. */
-function mergeArchive(mine, theirs, live) {
+/** Same idea for the Archive: union by id, the later archiving wins, and an entry whose task was restored since, or that was
+    deleted for good (`purged` ids), is not brought back by another saved copy. */
+function mergeArchive(mine, theirs, live, purged = new Set()) {
   const liveBy = new Map(live.map((x) => [x.id, x]))
   const restored = (a) => (liveBy.get(a.id)?.updatedAt || 0) > (a.archivedAt || 0)
   const idx = new Map(mine.map((a, i) => [a.id, i]))
@@ -246,7 +247,7 @@ function mergeArchive(mine, theirs, live) {
   let changed = false
   for (const r of theirs) {
     const i = idx.get(r.id)
-    if (i === undefined) { if (restored(r)) continue; idx.set(r.id, out.length); out.push(r); changed = true }
+    if (i === undefined) { if (restored(r) || purged.has(r.id)) continue; idx.set(r.id, out.length); out.push(r); changed = true }
     else if ((r.archivedAt || 0) > (out[i].archivedAt || 0)) { out[i] = r; changed = true }
   }
   const kept = out.filter((a) => !restored(a))
@@ -663,7 +664,7 @@ export default function TodoApp() {
   const [tasks, setTasksRaw] = useLocalStorage('todo.tasks', [], reviveTasks,
     (mine, theirs) => mergeTasks(mine, theirs, tombstones(syncRef.current.archive, storedList('todo.archive'))))
   const [archive, setArchive] = useLocalStorage('todo.archive', [], reviveArchive,
-    (mine, theirs) => mergeArchive(mine, theirs, syncRef.current.tasks))
+    (mine, theirs) => mergeArchive(mine, theirs, syncRef.current.tasks, new Set(storedList('todo.purged'))))
   const setTasks = useCallback((u) => setTasksRaw((prev) => stampChanged(prev, typeof u === 'function' ? u(prev) : u, Date.now())), [setTasksRaw])
   const [archiveKeep, setArchiveKeep] = useLocalStorage('todo.archiveKeep', 0)  // days to keep archived tasks; 0 = for ever
   const [dark, setDark] = useLocalStorage('todo.dark', () =>
@@ -749,6 +750,11 @@ export default function TodoApp() {
   // (nowTick re-renders every 20 s, so `today` changes by itself).
   const today = todayStr()
   // Whatever leaves the list (deleted, replaced by an import) is archived, not lost.
+  // Deleting from the Archive for good must be remembered, or the merge with the saved copy would bring the entries straight back.
+  const purge = useCallback((ids) => {
+    const old = (() => { try { const v = JSON.parse(safe.get('todo.purged')); return Array.isArray(v) ? v : [] } catch { return [] } })()
+    safe.set('todo.purged', JSON.stringify([...new Set([...old, ...ids])].slice(-3000)))
+  }, [])
   const archiveAdd = useCallback((list, reason) => {
     if (!list.length) return
     setArchive((prev) => {
@@ -771,8 +777,10 @@ export default function TodoApp() {
   useEffect(() => {
     if (!archiveKeep) return
     const cut = Date.now() - archiveKeep * 864e5
+    const old = syncRef.current.archive.filter((x) => x.archivedAt < cut).map((x) => x.id)
+    if (old.length) purge(old)
     setArchive((prev) => (prev.some((x) => x.archivedAt < cut) ? prev.filter((x) => x.archivedAt >= cut) : prev))
-  }, [archiveKeep, today, setArchive])
+  }, [archiveKeep, today, setArchive, purge])
 
   // Apply theme class to <html>.
   useEffect(() => {
@@ -1003,10 +1011,12 @@ export default function TodoApp() {
     setNotice({ text: `Restored ${items.length} task${items.length === 1 ? '' : 's'}.` })
   }, [archive, setTasks, setArchive])
   const deleteArchived = useCallback((ids) => {
-    const set = new Set(ids)
+    const list = [].concat(ids)  // the row's trash button passes one id, the bulk buttons a list
+    const set = new Set(list)
+    purge(list)
     setArchive((prev) => prev.filter((x) => !set.has(x.id)))
     setNotice({ text: `Permanently deleted ${set.size} task${set.size === 1 ? '' : 's'}.` })
-  }, [setArchive])
+  }, [setArchive, purge])
   const rename = useCallback((id, text) => {
     const v = text.trim()
     if (v) patch(id, (x) => ({ ...x, text: v }))
