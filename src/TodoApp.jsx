@@ -1298,6 +1298,7 @@ export default function TodoApp() {
               </div>
             )}
           </div>
+          {upcoming[0] && <UpNext item={upcoming[0]} nowTick={nowTick} onView={viewTask} onDone={complete} />}
           <div className="glass flex max-w-full items-center gap-0.5 rounded-full p-1 shadow-sm">
             <IconButton
               title={!notify ? 'Notifications off. Click to enable'
@@ -2960,6 +2961,27 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, o
 }
 
 /* --------------------------- Upcoming reminders ---------------------------- */
+// "Up next": the soonest reminder still to come, with a live countdown and a one-click Done. Fills the wide header; hidden on small screens.
+function UpNext({ item, nowTick, onView, onDone }) {
+  const at = nextReminderAt(item.reminder, nowTick)
+  const mins = Math.max(0, Math.ceil((at - nowTick) / 60000))
+  const when = mins < 1 ? 'now' : mins < 60 ? `in ${mins} min` : mins < 1440 ? `in ${Math.floor(mins / 60)} h ${mins % 60 ? `${mins % 60} min` : ''}`.trim() : `in ${Math.floor(mins / 1440)} d`
+  const time = new Date(at)
+  const clock = fmtTime(`${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`)
+  return (
+    <div className="glass animate-fade-in mx-auto hidden min-w-0 max-w-md flex-1 items-center gap-3 rounded-2xl px-4 py-3 shadow-sm lg:flex">
+      <PriorityIcon p={item.priority} size={22} />
+      <button onClick={() => onView(item.id)} className="min-w-0 flex-1 text-left">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-teal-500">Up next</div>
+        <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{item.text}</div>
+        <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{when} · {clock}</div>
+      </button>
+      <button onClick={() => onDone(item.id)} title="Mark done" aria-label="Mark up-next task done"
+        className="rounded-full bg-teal-500/15 p-2 text-teal-600 transition hover:bg-teal-500/25 dark:text-teal-300"><Check size={16} /></button>
+    </div>
+  )
+}
+
 function UpcomingReminders({ items, nowTick, onView, onCancel }) {
   const [open, setOpen] = useState(true)
   return (
