@@ -336,6 +336,16 @@ const overdueMins = (r, now) => Math.max(0, Math.floor((now - reminderEventTime(
 const fmtDur = (m) => (m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`)
 /** Human frequency for the upcoming-reminders table. */
 const freqLabel = (r) => r.repeat ? `Every ${r.repeat} min` : r.lead ? `${r.lead} min before` : 'Once'
+// Web only: the reminder timer lives in a worker (public/timer-worker.js) because a hidden browser tab's own timers are slowed to
+// about once a minute. The desktop app (file://) doesn't need it: its window never throttles timers.
+let timerWorker
+function getTimerWorker() {
+  if (timerWorker === undefined) {
+    timerWorker = null
+    try { if (typeof Worker !== 'undefined' && /^https?:$/.test(location.protocol)) timerWorker = new Worker(`${import.meta.env.BASE_URL}timer-worker.js`) } catch { /* no worker: the page's own timer is used */ }
+  }
+  return timerWorker
+}
 /** The next future moment any reminder needs attention (its time, a snooze ending, a repeat), or null. Anything already due is
     handled by the alert check itself, so only moments after `now` count here. */
 function nextAlertAt(tasks, now) {
@@ -709,15 +719,20 @@ export default function TodoApp() {
     // Exact timing: a timer is set for the very next moment anything is due (a reminder's time, the end of a snooze, the next
     // repeat) instead of waiting for a polling beat, so alerts fire at the scheduled second, not up to 20 s late.
     let timer = null
+    const worker = getTimerWorker()
     const arm = () => {
       clearTimeout(timer)
+      worker?.postMessage({})  // cancel the worker's pending wake-up
       if (mutedRef.current) return
       const at = nextAlertAt(reminderItems(tasksRef.current), Date.now())
-      if (at != null) timer = setTimeout(run, Math.min(Math.max(0, at - Date.now()) + 15, 2 ** 31 - 1))
+      if (at == null) return
+      if (worker) worker.postMessage({ at: at + 15 })
+      else timer = setTimeout(run, Math.min(Math.max(0, at - Date.now()) + 15, 2 ** 31 - 1))
     }
     const run = () => { check(); arm() }
     // Coming back (window shown, tab visible, PC woke from sleep) must not wait for the next timer: a sleeping PC pauses them.
     const onWake = () => { if (!document.hidden) run() }
+    if (worker) worker.onmessage = run
     run()
     const id = setInterval(run, 20000)  // safety net, and keeps the on-screen clock and "overdue" badges fresh
     document.addEventListener('visibilitychange', onWake)
@@ -726,6 +741,7 @@ export default function TodoApp() {
     window.addEventListener('autodeck-wake', onWake)  // sent by the desktop shell when Windows resumes from sleep
     return () => {
       clearTimeout(timer); clearInterval(id)
+      if (worker) { worker.onmessage = null; worker.postMessage({}) }
       document.removeEventListener('visibilitychange', onWake)
       window.removeEventListener('focus', onWake)
       window.removeEventListener('online', onWake)
@@ -3201,3 +3217,6 @@ function EmptyState({ icon: Icon, title, copy }) {
     </div>
   )
 }
+
+// the app's pure logic, exported so the automated tests (npm test) can check it without a browser
+export { sanitizeImported, revivedTask, reminderItems, patchItems, normalizeForToday, parseQuickAdd, migrateReminder, nextAlertAt, nextOccurrence, reminderTrigger }
