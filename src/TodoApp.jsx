@@ -149,6 +149,11 @@ function sanitizeImported(list) {
    reset clears away, and the ones an import replaces. Stored under "todo.archive" as the task plus { archivedAt, reason }. */
 const ARCHIVE_MAX = 3000  // oldest go first beyond this, so storage can't grow without limit
 const ARCHIVE_REASONS = { deleted: 'Deleted', completed: 'Completed', replaced: 'Replaced by import' }
+const REASON_TONE = {
+  deleted: 'bg-rose-500/10 text-rose-600 dark:text-rose-300',
+  completed: 'bg-lime-500/15 text-lime-700 dark:text-lime-300',
+  replaced: 'bg-sky-500/10 text-sky-600 dark:text-sky-300',
+}
 const reviveArchive = (v) => (Array.isArray(v)
   ? v.filter((x) => x && typeof x === 'object' && typeof x.id === 'string' && typeof x.text === 'string')
       .map((x) => ({ ...x, archivedAt: Number.isFinite(x.archivedAt) ? x.archivedAt : Date.now(), reason: ARCHIVE_REASONS[x.reason] ? x.reason : 'deleted' }))
@@ -1954,7 +1959,8 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
     const subs = x.subtasks || []
     const open = openId === x.id
     return (
-      <li key={x.id} className="glass-sm rounded-2xl border-l-[3px] px-3 py-2.5" style={{ borderLeftColor: catColor(categories, x.category) }}>
+      <li key={x.id} className={`glass-sm animate-fade-in rounded-2xl border-l-[3px] px-3 py-2.5 transition duration-200 hover:-translate-y-px hover:shadow-md ${sel.has(x.id) ? 'ring-2 ring-teal-500/40' : ''}`}
+        style={{ borderLeftColor: catColor(categories, x.category) }}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <input type="checkbox" checked={sel.has(x.id)} onChange={() => toggle(x.id)} aria-label={`Select ${x.text}`} className="h-4 w-4 shrink-0 accent-teal-500" />
           <PriorityChip p={x.priority} size={13} />
@@ -1981,13 +1987,13 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, x.category)}>
             <CategoryIcon name={x.category} color="currentColor" size={11} />{x.category}
           </span>
-          <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-slate-500 sm:text-[11px] dark:text-slate-400">{ARCHIVE_REASONS[x.reason]}</span>
-          {x.done && <span className="rounded-full bg-lime-500/15 px-2 py-0.5 text-[10px] font-semibold text-lime-700 sm:text-[11px] dark:text-lime-300">Was done</span>}
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${REASON_TONE[x.reason] || REASON_TONE.deleted}`}>{ARCHIVE_REASONS[x.reason]}</span>
+          {x.done && <span className="inline-flex items-center gap-1 rounded-full bg-lime-500/15 px-2 py-0.5 text-[10px] font-semibold text-lime-700 sm:text-[11px] dark:text-lime-300"><Check size={10} strokeWidth={3} />Was done</span>}
           {subs.length > 0 && <span className="text-[11px] text-slate-400">{subs.filter((s) => s.done).length}/{subs.length} subtasks</span>}
           <span className="text-[11px] text-slate-400">archived {fmtStamp(x.archivedAt)}</span>
         </div>
         {open && (
-          <div className="mt-2 space-y-1 border-t border-slate-200/60 pt-2 pl-6 text-xs text-slate-500 dark:border-slate-700/60 dark:text-slate-400">
+          <div className="animate-fade-in mt-2 ml-6 space-y-1 rounded-xl bg-slate-500/5 p-2.5 text-xs text-slate-500 dark:bg-white/[0.04] dark:text-slate-400">
             <div>Task day: {fmtDate(x.day)}{x.recur ? ` · repeats ${RECUR_LABEL[x.recur].toLowerCase()}` : ''}</div>
             {x.reminder && <div>Reminder: {reminderLabel(x.reminder)} on {x.reminder.date}</div>}
             {subs.map((s) => <div key={s.id} className={s.done ? 'line-through' : ''}>{s.done ? '[x]' : '[ ]'} {s.text}</div>)}
@@ -2004,21 +2010,25 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
 
   return (
     <div className="space-y-4">
-      <div className="glass rounded-[1.5rem] p-4">
+      <div className="glass animate-fade-in rounded-[1.5rem] p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <ArchiveIcon size={16} className="text-teal-500" />
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-300"><ArchiveIcon size={16} /></span>
           <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Archive</span>
           <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{archive.length} task{archive.length === 1 ? '' : 's'}</span>
+          {/* the counts double as quick filters: click one to show only that kind, click again to show all */}
           {Object.entries(ARCHIVE_REASONS).map(([k, l]) => byReason[k] > 0 && (
-            <span key={k} className="text-[11px] text-slate-400">{byReason[k]} {l.toLowerCase()}</span>
+            <button key={k} onClick={() => setReason(reason === k ? 'all' : k)} aria-pressed={reason === k} title={`Show only: ${l.toLowerCase()}`}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition active:scale-95 ${REASON_TONE[k]} ${reason === k ? 'ring-2 ring-current' : 'opacity-80 hover:opacity-100'}`}>
+              {byReason[k]} {l.toLowerCase()}
+            </button>
           ))}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Select label="Keep archived tasks" title="Old archived tasks are removed automatically" className={sel_} value={keepDays}
               onChange={(e) => setKeepDays(+e.target.value)}>
               {KEEP_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
             </Select>
-            <button onClick={exportCSV} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export CSV</button>
-            <button onClick={exportJSON} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export JSON</button>
+            <button onClick={exportCSV} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}><Download size={12} className="mr-1 inline" />Export CSV</button>
+            <button onClick={exportJSON} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}><Download size={12} className="mr-1 inline" />Export JSON</button>
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-400">Deleted tasks and tasks replaced by an import wait here until you restore or delete them for good. A restored task keeps its completion status.</p>
@@ -2054,9 +2064,14 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
                 <input type="date" aria-label="Archived from" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={sel_} /></label>
               <label className="flex items-center gap-1 text-[11px] text-slate-400">To
                 <input type="date" aria-label="Archived to" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={sel_} /></label>
-              {filtered && <button onClick={clearFilters} className="text-xs font-semibold text-teal-600 hover:underline dark:text-teal-400">Clear filters</button>}
+              {filtered && (
+                <span className="flex items-center gap-2 text-[11px] text-slate-400">
+                  Showing {shown.length} of {archive.length}
+                  <button onClick={clearFilters} className="text-xs font-semibold text-teal-600 hover:underline dark:text-teal-400">Clear filters</button>
+                </span>
+              )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-3 dark:border-white/10">
+            <div className={`-mx-1 flex flex-wrap items-center gap-2 rounded-2xl border-t border-black/5 px-1 pt-3 transition-colors dark:border-white/10 ${picked.length ? 'bg-teal-500/[0.06]' : ''}`}>
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
                 <input type="checkbox" checked={allPicked} onChange={pickAll} disabled={!shown.length} aria-label="Select all shown" className="h-4 w-4 accent-teal-500" />
                 {picked.length ? `${picked.length} selected` : `Select all ${shown.length} shown`}
@@ -2090,8 +2105,10 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
           ) : grouped ? (
             groups.map((g) => (
               <section key={g.day} aria-label={`Archived ${g.day}`}>
-                <h3 className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <h3 className="mb-2 flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <CalendarDays size={12} className="text-teal-500" />
                   {g.day === todayStr() ? 'Today' : fmtDate(g.day)} <span className="font-normal normal-case text-slate-400">· {g.items.length}</span>
+                  <span className="h-px flex-1 bg-gradient-to-r from-slate-400/25 to-transparent" />
                 </h3>
                 <ul className="space-y-2">{g.items.map(row)}</ul>
               </section>
