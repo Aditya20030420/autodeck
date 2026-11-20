@@ -48,7 +48,8 @@ export function alertTimes(task, now) {
   }
 
   // A recurring task comes back on its matching days, even if the app isn't opened in between.
-  if (task.recur) {
+  // (once a completed repeating task has spawned its next occurrence, that new task carries the future alarms)
+  if (task.recur && !task.spawned) {
     const anchorDow = new Date(`${task.day}T00:00`).getDay()
     const day = new Date(now)
     day.setHours(0, 0, 0, 0)

@@ -16,20 +16,20 @@
 ## Get it
 
 - **Web** — open the [live demo](https://aditya20030420.github.io/autodeck/) (works on any device; installable soon).
-- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.44.exe`** (installer; adds a Start Menu shortcut and updates itself automatically). Or build it yourself: `npm run electron:build`.
+- **Windows desktop** — from the [Releases](https://github.com/Aditya20030420/autodeck/releases) page, grab **`AutoDeck-Setup-1.0.45.exe`** (installer; adds a Start Menu shortcut and updates itself automatically). Or build it yourself: `npm run electron:build`.
 
 ---
 
 ## Features
 
-- **Daily focus** — shows today's date; unfinished tasks roll to today, finished old ones drop (local-time daily reset).
+- **Daily focus** — shows today's date; unfinished tasks roll to today at local midnight. **Completed tasks stay Completed** (every day, until you uncheck or delete them): the Completed board lists all of them, newest first, and only an explicit action of yours changes their status.
 - **Daily Report & goal tracking** — a second tab that turns today's tasks into a shareable daily report: auto progress summary (goals / completed / remaining / %), blockers and notes, Draft→Finalize, and a per-date history that's snapshotted so past days survive the daily reset. Copy, download as text, or "mark shared" to paste to a manager (single-user — no backend).
 - **Natural-language quick add** — type `Email Sam at 5pm #work !high` and it parses the time, category, and priority automatically.
 - **Two boards** — Pending & Completed side by side, each accent-colored (teal / lime).
 - **Rich tasks** — priority, category, reminders, **subtasks** (with per-task progress), pin, postpone, duplicate, inline edit.
-- **Recurring tasks** — repeat daily / weekdays / weekly; each re-spawns fresh on its next matching day.
+- **Recurring tasks** — repeat daily / weekdays / weekly. Completing one keeps that task Completed for good; on its next matching day the **next occurrence appears as a separate, new pending task**, so earlier completions are never reset.
 - **Week view** — a 7-day overview grouping tasks by their scheduled day, so postponed and upcoming recurring tasks show at a glance.
-- **Archive** — deleted tasks, finished tasks cleared by the daily reset, and tasks replaced by an import are kept here. Search, filter (reason, category, priority, date), sort, select many, restore to today, delete for good, export CSV/JSON, and optional automatic clean-up (30 days, 90 days, 1 year).
+- **Archive** — deleted tasks and tasks replaced by an import are kept here (restoring keeps a task's completion status). Search, filter (reason, category, priority, date), sort, select many, restore to today, delete for good, export CSV/JSON, and optional automatic clean-up (30 days, 90 days, 1 year).
 - **Custom categories** — add / recolor / delete your own categories; they drive the filters, `#tag` quick-add, and each task's badge + border color.
 - **Drag-and-drop reordering** (via `@dnd-kit`), live search, and filters (status filters + one pill per category).
 - **Reminder assistant** — schedule reminders by date + time with a **lead** (5/10/15/30 min, 1–2 h, or custom before) and **repeat until done** (every 5–120 min or custom). An always-visible dashboard banner lists what's due, **ordered and styled by priority** (High/Medium/Low), with a matching loud→soft alarm and desktop **browser notifications** (high-priority ones stay until dismissed). Per-reminder **Mark Done / Snooze / Dismiss / View task**, an **Overdue** indicator, and an **Upcoming reminders** table. Fires while the tab is open; mutable. *(No push server, so it can't alert when the browser is fully closed.)*

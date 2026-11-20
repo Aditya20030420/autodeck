@@ -53,7 +53,7 @@ test('legacy reminders are upgraded, unusable ones dropped', () => {
   assert.equal(migrateReminder(rem({ snoozeUntil: 123 })).snoozeUntil, 123)  // a snooze survives a restart
 })
 
-test('day rollover: old finished tasks leave, unfinished roll to today, repeating ones start over', () => {
+test('day rollover: completed tasks stay, unfinished roll to today, a completed repeating task gets a separate next occurrence', () => {
   const out = normalizeForToday([
     task({ text: 'old done', done: true, day: day(-3) }),
     task({ text: 'old open', day: day(-3) }),
@@ -61,10 +61,13 @@ test('day rollover: old finished tasks leave, unfinished roll to today, repeatin
     task({ text: 'future', day: day(3) }),
   ])
   const by = (t) => out.find((x) => x.text === t)
-  assert.equal(by('old done'), undefined)
+  assert.equal(by('old done').done, true); assert.equal(by('old done').day, day(-3))
   assert.equal(by('old open').day, day(0))
-  assert.equal(by('daily').done, false); assert.equal(by('daily').day, day(0))
-  assert.equal(by('daily').reminder.date, day(0)); assert.equal(by('daily').reminder.lastAlert, null)
+  const daily = out.filter((x) => x.text === 'daily')
+  assert.equal(daily.length, 2)
+  const orig = daily.find((x) => x.done), next = daily.find((x) => !x.done)
+  assert.equal(orig.day, day(-1)); assert.equal(orig.reminder.lastAlert, 5)            // the completed one is history, untouched
+  assert.equal(next.day, day(0)); assert.equal(next.reminder.date, day(0)); assert.equal(next.reminder.lastAlert, null)
   assert.equal(by('future').day, day(3))
 })
 
@@ -132,7 +135,7 @@ test('a restored task keeps a future reminder, drops a passed one, keeps a repea
   assert.equal(revivedTask(a, 5).reminder.lastAlert, null)
   assert.equal(revivedTask({ ...a, reminder: rem({ time: hm(-30) }) }, 5).reminder, null)
   assert.equal(revivedTask({ ...a, recur: 'daily', reminder: rem({ time: hm(-30) }) }, 5).reminder.date, day(0))
-  const r = revivedTask({ ...a, done: true, subtasks: [{ id: 's', text: 'x', done: true, reminder: rem({ time: hm(-30) }) }] }, 5)
+  const r = revivedTask({ ...a, done: false, subtasks: [{ id: 's', text: 'x', done: true, reminder: rem({ time: hm(-30) }) }] }, 5)
   assert.equal(r.done, false); assert.equal(r.subtasks[0].reminder, undefined); assert.equal('archivedAt' in r, false)
 })
 

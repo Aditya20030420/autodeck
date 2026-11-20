@@ -9,5 +9,5 @@ const common = { bundle: true, packages: 'external', format: 'esm', platform: 'n
   define: { __APP_VERSION__: '"test"', 'import.meta.env.BASE_URL': '"/"' } }
 await build({ ...common, entryPoints: ['src/TodoApp.jsx'], outfile: '.test-build/TodoApp.mjs' })
 await build({ ...common, entryPoints: ['src/androidReminders.js'], outfile: '.test-build/androidReminders.mjs' })
-const r = spawnSync(process.execPath, ['--test', 'tests/logic.test.mjs'], { stdio: 'inherit' })
+const r = spawnSync(process.execPath, ['--test', 'tests/logic.test.mjs', 'tests/rollover.test.mjs', 'tests/lifecycle.test.mjs'], { stdio: 'inherit' })
 process.exit(r.status ?? 1)

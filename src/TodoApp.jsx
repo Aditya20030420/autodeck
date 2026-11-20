@@ -53,20 +53,39 @@ const safe = {
 }
 
 /** Persisted state hook: like useState but mirrored to localStorage under `key`. */
-function useLocalStorage(key, initial, revive = (v) => v) {
+function useLocalStorage(key, initial, revive = (v) => v, merge) {
   const [value, setValue] = useState(() => {
     const raw = safe.get(key)
     if (raw == null) return typeof initial === 'function' ? initial() : initial
     // `revive` upgrades older saved shapes before the first render, so an old save can't crash the page
     try { return revive(JSON.parse(raw)) } catch { return initial }
   })
-  useEffect(() => { safe.set(key, JSON.stringify(value)) }, [key, value])
-  // Another tab or window of the same page saved something: take it, so the two never overwrite each other's changes.
+  // `merge(mine, theirs)` (optional) combines two versions of the value and returns `mine` itself when there is nothing newer in `theirs`
+  const mergeRef = useRef(merge)
+  mergeRef.current = merge
+  useEffect(() => {
+    let out = value
+    // Another window may have saved newer changes since this one last looked: bring them in before writing, never overwrite them
+    if (mergeRef.current) {
+      try {
+        const raw = safe.get(key)
+        if (raw != null) {
+          const merged = mergeRef.current(value, revive(JSON.parse(raw)))
+          if (merged !== value) { out = merged; setValue(merged) }
+        }
+      } catch { /* the stored value is unreadable: ours replaces it */ }
+    }
+    safe.set(key, JSON.stringify(out))
+  }, [key, value]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Another tab or window of the same page saved something: merge it in, so the two never overwrite each other's changes.
   // (The browser only raises this event for a change that really differs, so the write above can't ping-pong.)
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key !== key || e.newValue == null) return
-      try { setValue(revive(JSON.parse(e.newValue))) } catch { /* unreadable: keep what we have */ }
+      try {
+        const theirs = revive(JSON.parse(e.newValue))
+        setValue((mine) => (mergeRef.current ? mergeRef.current(mine, theirs) : theirs))
+      } catch { /* unreadable: keep what we have */ }
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
@@ -98,8 +117,9 @@ function cleanSubtask(s) {
   if (isDay(s.day)) out.day = s.day
   return out
 }
+const MAX_TASKS = 20000  // completed tasks are kept for ever, so the list is allowed to grow
 function sanitizeImported(list) {
-  return list.slice(0, 5000).filter((x) => x && typeof x === 'object' && typeof x.text === 'string').map((x, i) => {
+  return list.slice(0, MAX_TASKS).filter((x) => x && typeof x === 'object' && typeof x.text === 'string').map((x, i) => {
     const r = x.reminder
     const reminder = r && typeof r === 'object'
       ? { date: isDay(r.date) ? r.date : todayStr(), time: isTime(r.time) ? r.time : '09:00',
@@ -114,6 +134,12 @@ function sanitizeImported(list) {
       subtasks: Array.isArray(x.subtasks)
         ? x.subtasks.slice(0, 200).filter((s) => s && typeof s === 'object').map(cleanSubtask)
         : [],
+      // lifecycle fields: when it was completed, which repeating series it belongs to, whether its next occurrence exists,
+      // and when it last changed (used to tell newer from older when two windows save)
+      ...(Number.isFinite(x.completedAt) ? { completedAt: x.completedAt } : {}),
+      ...(typeof x.series === 'string' && x.series ? { series: clip(x.series, 64) } : {}),
+      ...(x.spawned ? { spawned: true } : {}),
+      ...(Number.isFinite(x.updatedAt) ? { updatedAt: x.updatedAt } : {}),
     }
   })
 }
@@ -126,20 +152,106 @@ const reviveArchive = (v) => (Array.isArray(v)
   ? v.filter((x) => x && typeof x === 'object' && typeof x.id === 'string' && typeof x.text === 'string')
       .map((x) => ({ ...x, archivedAt: Number.isFinite(x.archivedAt) ? x.archivedAt : Date.now(), reason: ARCHIVE_REASONS[x.reason] ? x.reason : 'deleted' }))
   : [])
-/** An archived entry back as an ordinary task for today: not done, alarms re-armed, a reminder that already passed dropped. */
-function revivedTask(a, order) {
-  const { archivedAt, reason, ...task } = a  // eslint-disable-line no-unused-vars
-  let reminder = task.reminder
-  if (reminder && task.recur) reminder = { ...reminder, date: todayStr(), lastAlert: null, snoozeUntil: null }
-  else if (reminder && reminderEventTime(reminder).getTime() <= Date.now()) reminder = null
-  else if (reminder) reminder = { ...reminder, lastAlert: null, snoozeUntil: null }
+/* ---- the lifecycle of a task's completion ------------------------------------------------------------------------------
+   A task becomes completed only when the user checks it, and stops being completed only when the user unchecks it.
+   Nothing else (a new day, a reminder, a restart, another window) changes `done`. `completedAt` records when. */
+const dayMs = (d) => new Date(`${d}T12:00`).getTime()
+/** The day a task counts as done on: the day it was checked off (older saves without it use the task's own day). */
+const completionDay = (x) => (x.completedAt ? dateStr(new Date(x.completedAt)) : x.day)
+const markDone = (x, now = Date.now()) => ({ ...x, done: true, completedAt: now })
+/** Alarms of a task that comes back as a fresh pending task: a reminder that has passed is dropped, a repeating one moves to today. */
+function withFreshAlarms(task) {
+  const fresh = (r, recur) => {
+    if (!r) return r
+    if (recur) return { ...r, date: todayStr(), lastAlert: null, snoozeUntil: null }
+    if (reminderEventTime(r).getTime() <= Date.now()) return null
+    return { ...r, lastAlert: null, snoozeUntil: null }
+  }
+  const reminder = fresh(task.reminder, task.recur)
   const subtasks = (task.subtasks || []).map((st) => {
     if (!st.reminder) return st
-    if (st.recur) return { ...st, reminder: { ...st.reminder, date: todayStr(), lastAlert: null, snoozeUntil: null } }
-    if (reminderEventTime(st.reminder).getTime() <= Date.now()) { const { reminder: gone, ...rest } = st; return rest } // eslint-disable-line no-unused-vars
-    return { ...st, reminder: { ...st.reminder, lastAlert: null, snoozeUntil: null } }
+    const r = fresh(st.reminder, st.recur)
+    if (r) return { ...st, reminder: r }
+    const { reminder: gone, ...rest } = st  // eslint-disable-line no-unused-vars
+    return rest
   })
-  return { ...task, subtasks, day: todayStr(), done: false, pinned: false, order, reminder }
+  return { reminder, subtasks }
+}
+/** The user unchecks a completed task: it goes back to Pending (for today, when it was completed on an earlier day). */
+function markUndone(x) {
+  const { completedAt, ...rest } = x  // eslint-disable-line no-unused-vars
+  const y = { ...rest, done: false }
+  return y.day < todayStr() ? { ...y, day: todayStr(), ...withFreshAlarms(y) } : y
+}
+/** Moving a task to another day: a completed task stays completed (only its day changes); an open one takes its reminders along. */
+function rescheduleTask(x, day) {
+  if (x.done) return { ...x, day, completedAt: x.completedAt ?? dayMs(x.day) }
+  return {
+    ...x, day,
+    reminder: x.reminder ? { ...x.reminder, date: day, lastAlert: null, snoozeUntil: null } : null,
+    subtasks: (x.subtasks || []).map((st) => (st.reminder ? { ...st, reminder: { ...st.reminder, date: day, lastAlert: null, snoozeUntil: null } } : st)),
+  }
+}
+/** Duplicate: an independent, pending copy for today (the original is untouched, whatever its state). */
+function pendingCopy(src, now = Date.now()) {
+  const { completedAt, spawned, series, updatedAt, ...rest } = src  // eslint-disable-line no-unused-vars
+  const alarms = withFreshAlarms(src)
+  return { ...rest, id: crypto.randomUUID(), done: false, pinned: false, day: todayStr(), createdAt: now, order: now,
+    reminder: alarms.reminder,
+    subtasks: alarms.subtasks.map((st) => ({ ...st, id: crypto.randomUUID(), done: false })) }
+}
+/** An archived entry back as a task. It keeps its completion status: a completed task returns to Completed untouched; an open
+    one returns to Pending for today with its alarms re-armed (a reminder that already passed is dropped). */
+function revivedTask(a, order) {
+  const { archivedAt, reason, ...task } = a  // eslint-disable-line no-unused-vars
+  if (task.done) return { ...task, pinned: false, order }
+  return { ...task, ...withFreshAlarms(task), day: todayStr(), done: false, pinned: false, order }
+}
+/** Mark the objects that changed since `prev` with the time of the change, so two windows can tell which version is newer. */
+function stampChanged(prev, next, now) {
+  if (next === prev) return prev
+  const old = new Map(prev.map((x) => [x.id, x]))
+  const same = next.length === prev.length && next.every((x, i) => x === prev[i])
+  if (same) return prev
+  return next.map((x) => (old.get(x.id) === x ? x : { ...x, updatedAt: now }))
+}
+/** ids archived (deleted, replaced) and when: a task changed before that moment is gone, one changed after it (restored) is back. */
+function tombstones(...lists) {
+  const m = new Map()
+  for (const list of lists) for (const a of list || []) if (a && typeof a.id === 'string') m.set(a.id, Math.max(m.get(a.id) || 0, a.archivedAt || 0))
+  return m
+}
+/** Combine this window's tasks with what is stored (another window's save): per task the newer change wins, tasks only one side
+    has are kept unless they were archived since. Returns `mine` itself when `theirs` brings nothing. */
+function mergeTasks(mine, theirs, tomb) {
+  const idx = new Map(mine.map((x, i) => [x.id, i]))
+  const out = mine.slice()
+  let changed = false
+  for (const r of theirs) {
+    const i = idx.get(r.id)
+    if (i === undefined) {
+      if ((tomb.get(r.id) || 0) >= (r.updatedAt || 0) && tomb.has(r.id)) continue  // archived after its last change
+      idx.set(r.id, out.length); out.push(r); changed = true
+    } else if ((r.updatedAt || 0) > (out[i].updatedAt || 0)) { out[i] = r; changed = true }
+  }
+  const kept = out.filter((x) => !(tomb.has(x.id) && tomb.get(x.id) > (x.updatedAt || 0)))
+  return changed || kept.length !== out.length ? kept : mine
+}
+/** Same idea for the Archive: union by id, the later archiving wins, and an entry whose task was restored since is dropped. */
+function mergeArchive(mine, theirs, live) {
+  const liveBy = new Map(live.map((x) => [x.id, x]))
+  const restored = (a) => (liveBy.get(a.id)?.updatedAt || 0) > (a.archivedAt || 0)
+  const idx = new Map(mine.map((a, i) => [a.id, i]))
+  const out = mine.slice()
+  let changed = false
+  for (const r of theirs) {
+    const i = idx.get(r.id)
+    if (i === undefined) { if (restored(r)) continue; idx.set(r.id, out.length); out.push(r); changed = true }
+    else if ((r.archivedAt || 0) > (out[i].archivedAt || 0)) { out[i] = r; changed = true }
+  }
+  const kept = out.filter((a) => !restored(a))
+  if (!changed && kept.length === out.length) return mine
+  return kept.sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0)).slice(0, ARCHIVE_MAX)
 }
 
 /* Every reminder in the app as one flat list: a task's own, plus those of its subtasks. A subtask reminder is presented as
@@ -191,7 +303,7 @@ function applySubFields(st, f) {
 }
 /** A repeating subtask starts over on its next matching day, like a repeating task. */
 function normSub(st, task, t) {
-  if (!st.recur) return st
+  if (!st.recur || task.done) return st
   const d = st.day || task.day || t
   if (d >= t) return st
   const next = nextOccurrence(st.recur, new Date(), new Date(`${d}T00:00`).getDay())
@@ -201,34 +313,53 @@ function normSub(st, task, t) {
 /* Tasks as read from storage: known fields only, and old-style reminders upgraded, so the first screen can't crash on them. */
 const reviveTasks = (v) => sanitizeImported(Array.isArray(v) ? v : []).map((x) => ({ ...x, reminder: migrateReminder(x.reminder) }))
 
+/** The next occurrence of a completed repeating task, as a brand-new pending task. Its id comes from the series and the date, so
+    creating it twice (two windows, a restart) can never produce two. The completed original is not touched. */
+function nextOccurrenceOf(x, today) {
+  const next = nextOccurrence(x.recur, new Date(), new Date(`${x.day}T00:00`).getDay())
+  const root = x.series || String(x.id).split('@')[0]
+  const { completedAt, spawned, updatedAt, ...rest } = x  // eslint-disable-line no-unused-vars
+  const moved = (r) => (r ? { ...r, date: next, lastAlert: null, snoozeUntil: null } : r)
+  return {
+    ...rest, id: `${root}@${next}`, series: root, done: false, day: next, createdAt: Date.now(), reminder: moved(x.reminder),
+    subtasks: (x.subtasks || []).map((st) => ({ ...st, id: `${String(st.id).split('@')[0]}@${next}`, done: false,
+      ...(st.recur ? { day: next } : {}), ...(st.reminder ? { reminder: moved(st.reminder) } : {}) })),
+  }
+}
+
+/** The daily rollover. A COMPLETED task is never changed here: not archived, not moved, not reset. A completed repeating task only
+    gets its next occurrence created (once, as a separate pending task). Unfinished tasks roll forward as before. Tasks that need
+    no change are returned as the very same objects. */
 function normalizeForToday(tasks) {
   const t = todayStr()
-  return tasks
-    // Keep today's tasks, any unfinished task, and every recurring task.
-    .filter((x) => x.day === t || !x.done || x.recur)
-    .map((x, i) => {
-      const base = {
-        subtasks: [],                       // default for tasks saved before subtasks existed
-        order: x.order ?? x.createdAt ?? i, // default manual-sort order
-        ...x,
-        // Migrate legacy 'HH:MM' string reminders → object; keep future-dated ones as-is.
-        reminder: migrateReminder(x.reminder),
-      }
-      base.subtasks = (base.subtasks || []).map((st) => normSub(st, x, t))
-      if (x.day === t) return base
-      // A recurring task re-spawns fresh (undone) on its next matching day.
-      if (x.recur) {
-        if (x.day > t) return base  // already scheduled ahead — leave it
-        const anchorDow = new Date(`${x.day}T00:00`).getDay()
-        const next = nextOccurrence(x.recur, new Date(), anchorDow)
-        return {
-          ...base, day: next, done: false,
-          reminder: base.reminder ? { ...base.reminder, date: next, lastAlert: null, snoozeUntil: null } : null,
-        }
-      }
-      // Past unfinished task rolls forward to today; future-dated (postponed) stays put.
-      return x.day < t ? { ...base, day: t } : base
-    })
+  const ids = new Set(tasks.map((x) => x.id))
+  const out = []
+  tasks.forEach((x, i) => {
+    if (x.done) {
+      if (x.recur && !x.spawned && x.day < t) {
+        out.push({ ...x, spawned: true })
+        const succ = nextOccurrenceOf(x, t)
+        if (!ids.has(succ.id)) { out.push(succ); ids.add(succ.id) }
+      } else out.push(x)
+      return
+    }
+    let y = x
+    if (typeof y.reminder === 'string') y = { ...y, reminder: migrateReminder(y.reminder) }  // an old-style reminder
+    if (!Array.isArray(y.subtasks)) y = { ...y, subtasks: [] }
+    if (y.order == null) y = { ...y, order: y.createdAt ?? i }
+    const steps = y.subtasks.map((st) => normSub(st, y, t))
+    if (steps.some((st, k) => st !== y.subtasks[k])) y = { ...y, subtasks: steps }
+    if (y.day === t) { out.push(y); return }
+    if (y.recur) {
+      if (y.day > t) { out.push(y); return }  // already scheduled ahead
+      // an unfinished repeating task moves on to its next day
+      const next = nextOccurrence(y.recur, new Date(), new Date(`${y.day}T00:00`).getDay())
+      out.push({ ...y, day: next, reminder: y.reminder ? { ...y.reminder, date: next, lastAlert: null, snoozeUntil: null } : null })
+      return
+    }
+    out.push(y.day < t ? { ...y, day: t } : y)  // an unfinished task rolls forward to today; a postponed one stays put
+  })
+  return out
 }
 
 /**
@@ -525,8 +656,15 @@ function playSfx(name) {
 // ============================================================================
 
 export default function TodoApp() {
-  const [tasks, setTasks] = useLocalStorage('todo.tasks', [], reviveTasks)
-  const [archive, setArchive] = useLocalStorage('todo.archive', [], reviveArchive)
+  // Two windows of the same page share one storage. Each task carries `updatedAt`; saves and incoming changes are merged per task
+  // (the newer change wins) instead of one whole list replacing the other, so a stale window can't undo a completion.
+  const syncRef = useRef({ tasks: [], archive: [] })
+  const storedList = (k) => { try { const v = JSON.parse(safe.get(k)); return Array.isArray(v) ? v : [] } catch { return [] } }
+  const [tasks, setTasksRaw] = useLocalStorage('todo.tasks', [], reviveTasks,
+    (mine, theirs) => mergeTasks(mine, theirs, tombstones(syncRef.current.archive, storedList('todo.archive'))))
+  const [archive, setArchive] = useLocalStorage('todo.archive', [], reviveArchive,
+    (mine, theirs) => mergeArchive(mine, theirs, syncRef.current.tasks))
+  const setTasks = useCallback((u) => setTasksRaw((prev) => stampChanged(prev, typeof u === 'function' ? u(prev) : u, Date.now())), [setTasksRaw])
   const [archiveKeep, setArchiveKeep] = useLocalStorage('todo.archiveKeep', 0)  // days to keep archived tasks; 0 = for ever
   const [dark, setDark] = useLocalStorage('todo.dark', () =>
     window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
@@ -610,7 +748,7 @@ export default function TodoApp() {
   // Normalise for the new day: on load, and again when midnight passes with the app left open
   // (nowTick re-renders every 20 s, so `today` changes by itself).
   const today = todayStr()
-  // Finished tasks from earlier days that the reset clears away are archived, not lost.
+  // Whatever leaves the list (deleted, replaced by an import) is archived, not lost.
   const archiveAdd = useCallback((list, reason) => {
     if (!list.length) return
     setArchive((prev) => {
@@ -621,14 +759,14 @@ export default function TodoApp() {
   }, [setArchive])
   const tasksRef = useRef(tasks)
   tasksRef.current = tasks
+  syncRef.current.tasks = tasks
+  syncRef.current.archive = archive
   const items = useMemo(() => reminderItems(tasks), [tasks])  // every reminder: the tasks' own and their subtasks'
-  useEffect(() => {
-    const prev = tasksRef.current
-    const next = normalizeForToday(prev)
-    const kept = new Set(next.map((x) => x.id))
-    archiveAdd(prev.filter((x) => !kept.has(x.id)), 'completed')
-    setTasks(next)
-  }, [setTasks, archiveAdd, today])
+  // The daily rollover: unfinished tasks move on, a completed repeating task gets its next occurrence. Completed tasks are never
+  // archived, moved or reset by it.
+  // (Applied to the LATEST state, never to an older snapshot: an update that arrived from another window meanwhile must not be replaced
+  // by stale copies and then stamped as newer than it.)
+  useEffect(() => { setTasks((prev) => normalizeForToday(prev)) }, [setTasks, today])
   // Optional automatic clean-up of old archive entries (Archive tab → "Keep for").
   useEffect(() => {
     if (!archiveKeep) return
@@ -751,9 +889,12 @@ export default function TodoApp() {
 
   // --- derived: today's tasks, counts, progress ---
   const t = todayStr()
-  const todays = useMemo(() => tasks.filter((x) => x.day === t), [tasks, t])
-  const doneCount = useMemo(() => todays.filter((x) => x.done).length, [todays])
-  const total = todays.length
+  // Pending is today's open tasks. Completed is EVERY completed task (any day), so finished work never disappears.
+  const pendingToday = useMemo(() => tasks.filter((x) => !x.done && x.day === t), [tasks, t])
+  const completedAll = useMemo(() => tasks.filter((x) => x.done), [tasks])
+  const todays = useMemo(() => [...pendingToday, ...completedAll], [pendingToday, completedAll])  // what the boards can show
+  const doneCount = useMemo(() => completedAll.filter((x) => completionDay(x) === t).length, [completedAll, t])  // done today
+  const total = pendingToday.length + doneCount
   const pct = total ? Math.round((doneCount / total) * 100) : 0
 
   // Celebration + chime when the last open task of a non-empty list gets done.
@@ -782,16 +923,16 @@ export default function TodoApp() {
         if (q && !x.text.toLowerCase().includes(q)) return false
         return true
       })
-      // Pinned first, incomplete before done, then manual drag order.
+      // Pinned first, incomplete before done, then manual drag order; completed ones newest first.
       .sort((a, b) =>
         (b.pinned - a.pinned) ||
         (a.done - b.done) ||
-        (a.order - b.order))
+        (a.done ? (b.completedAt ?? dayMs(b.day)) - (a.completedAt ?? dayMs(a.day)) : a.order - b.order))
   }, [todays, filter, query])
 
   const pending = visible.filter((x) => !x.done)
   const completed = visible.filter((x) => x.done)
-  const highPending = todays.filter((x) => !x.done && x.priority === 'High').length
+  const highPending = pendingToday.filter((x) => x.priority === 'High').length
   // how many tasks each filter pill would show (searching doesn't change them)
   const filterCount = useMemo(() => {
     const c = { All: todays.length, Active: 0, Completed: 0, 'High Priority': 0 }
@@ -828,10 +969,14 @@ export default function TodoApp() {
 
   // --- mutations (memoized; used across many cards) ---
   const patch = useCallback((id, fn) => setTasks((prev) => patchItems(prev, new Set([id]), fn)), [setTasks])  // a task, or a subtask's reminder item
-  const toggle = useCallback((id) => patch(id, (x) => {
-    playSfx(x.done ? 'toggleOff' : 'complete')  // different sound for check vs un-check
-    return { ...x, done: !x.done }
-  }), [patch])
+  // The only things that change a task's completion: the user checking it (toggle / complete) or unchecking it (toggle).
+  const toggle = useCallback((id) => {
+    const cur = tasksRef.current.find((x) => x.id === id) || reminderItems(tasksRef.current).find((x) => x.id === id)
+    playSfx(cur?.done ? 'toggleOff' : 'complete')  // different sound for check vs un-check
+    patch(id, (x) => (x.done ? markUndone(x) : markDone(x)))
+  }, [patch])
+  // "Done" from a reminder banner or a notification button: always means done, and never un-does a finished task.
+  const complete = useCallback((id) => patch(id, (x) => (x.done ? x : markDone(x))), [patch])
   // Delete keeps the removed task around briefly so it can be undone from the toast.
   const remove = useCallback((id) => {
     const victim = tasksRef.current.find((x) => x.id === id)
@@ -855,7 +1000,7 @@ export default function TodoApp() {
     const base = Date.now()
     setTasks((prev) => [...prev, ...items.map((x, i) => revivedTask(x, base + i))])
     setArchive((prev) => prev.filter((x) => !set.has(x.id)))
-    setNotice({ text: `Restored ${items.length} task${items.length === 1 ? '' : 's'} to today.` })
+    setNotice({ text: `Restored ${items.length} task${items.length === 1 ? '' : 's'}.` })
   }, [archive, setTasks, setArchive])
   const deleteArchived = useCallback((ids) => {
     const set = new Set(ids)
@@ -924,23 +1069,18 @@ export default function TodoApp() {
     const onMsg = (e) => {
       const m = e.data
       if (!m || m.type !== 'reminder-action') return
-      if (m.action === 'done') patch(m.taskId, (x) => ({ ...x, done: true }))  // "Done" never un-does a finished task
+      if (m.action === 'done') complete(m.taskId)  // "Done" never un-does a finished task
       else if (m.action === 'snooze') snoozeReminder(m.taskId, 10)
       else viewTask(m.taskId)
     }
     navigator.serviceWorker.addEventListener('message', onMsg)
     return () => navigator.serviceWorker.removeEventListener('message', onMsg)
-  }, [patch, snoozeReminder, viewTask])
+  }, [complete, snoozeReminder, viewTask])
 
-  // Move a task to any day (YYYY-MM-DD). Its reminder follows the day and re-arms;
-  // a finished task becomes pending again when it lands on a different day.
+  // Move a task to any day (YYYY-MM-DD). An open task's reminder follows the day and re-arms; a completed task stays completed.
   const reschedule = useCallback((id, day) => {
     if (day < todayStr()) day = todayStr()  // a typed past date would hide the task from every view
-    patch(id, (x) => ({
-      ...x, day, done: x.day === day ? x.done : false,
-      reminder: x.reminder ? { ...x.reminder, date: day, lastAlert: null, snoozeUntil: null } : null,
-      subtasks: (x.subtasks || []).map((st) => (st.reminder ? { ...st, reminder: { ...st.reminder, date: day, lastAlert: null, snoozeUntil: null } } : st)),
-    }))
+    patch(id, (x) => rescheduleTask(x, day))  // a completed task stays completed
   }, [patch])
   const postpone = useCallback((id) => {
     const d = new Date(); d.setDate(d.getDate() + 1)
@@ -948,11 +1088,7 @@ export default function TodoApp() {
   }, [reschedule])
   const duplicate = useCallback((id) => setTasks((prev) => {
     const src = prev.find((x) => x.id === id)
-    if (!src) return prev
-    return [...prev, { ...src, id: crypto.randomUUID(), done: false, pinned: false, order: Date.now(), createdAt: Date.now(),
-      reminder: src.reminder ? { ...src.reminder, lastAlert: null } : null,
-      subtasks: (src.subtasks || []).map((st) => ({ ...st, id: crypto.randomUUID(), done: false,
-        reminder: st.reminder ? { ...st.reminder, lastAlert: null, snoozeUntil: null } : st.reminder }))}]
+    return src ? [...prev, pendingCopy(src)] : prev  // an independent pending copy; the original keeps its state
   }), [setTasks])
 
   const addTask = useCallback((data) => {
@@ -1234,7 +1370,7 @@ export default function TodoApp() {
             is marked done. Ordered by priority, styled by the top priority present. */}
         {dueReminders.length > 0 && (
           <ReminderBanner items={dueReminders} nowTick={nowTick}
-            onDone={toggle} onSnooze={snoozeReminder} onDismiss={dismissReminder} onView={viewTask}
+            onDone={complete} onSnooze={snoozeReminder} onDismiss={dismissReminder} onView={viewTask}
             onSnoozeAll={snoozeAll} onDismissAll={dismissAll}
             notify={notify} muted={muted} />
         )}
@@ -1458,6 +1594,7 @@ const goalStatus = (g) => {
   const subs = g.subtasks || []
   return subs.length && subs.some((s) => s.done) ? 'In Progress' : 'Pending'
 }
+const fmtShortDay = (ymd) => new Date(`${ymd}T00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 const fmtDate = (ymd) => new Date(`${ymd}T00:00`).toLocaleDateString(undefined,
   { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 
@@ -1506,7 +1643,7 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
 
   const saved = reports[date]
   // Goals: live for today, otherwise the saved snapshot (empty if none).
-  const goals = isToday ? tasks.filter((x) => x.day === date) : (saved?.snapshot ?? [])
+  const goals = isToday ? tasks.filter((x) => (x.done ? completionDay(x) === date : x.day === date)) : (saved?.snapshot ?? [])
   const blockers = saved?.blockers ?? ''
   const notes = saved?.notes ?? ''
   const sharedWith = saved?.sharedWith ?? ''
@@ -1773,7 +1910,7 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
           <button onClick={() => setOpenId(open ? null : x.id)} aria-expanded={open}
             className={`min-w-[9rem] flex-1 break-words text-left text-sm ${open ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : ''}`}>{x.text}</button>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            <button onClick={() => doRestore([x.id])} title="Restore to today" aria-label="Restore to today"
+            <button onClick={() => doRestore([x.id])} title={x.done ? 'Restore (stays completed)' : 'Restore to today'} aria-label={x.done ? 'Restore (stays completed)' : 'Restore to today'}
               className="flex items-center gap-1 rounded-full bg-teal-500/10 px-2.5 py-1 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-500/20 active:scale-95 dark:text-teal-300">
               <ArchiveRestore size={13} /> Restore
             </button>
@@ -1833,7 +1970,7 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
             <button onClick={exportJSON} disabled={!shown.length} className={`${pill} bg-slate-500/10 text-slate-600 hover:bg-slate-500/20 disabled:opacity-40 dark:text-slate-300`}>Export JSON</button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-slate-400">Deleted tasks, finished tasks cleared by the daily reset, and tasks replaced by an import all wait here until you restore or delete them for good.</p>
+        <p className="mt-2 text-xs text-slate-400">Deleted tasks and tasks replaced by an import wait here until you restore or delete them for good. A restored task keeps its completion status.</p>
       </div>
 
       {archive.length === 0 ? (
@@ -2630,6 +2767,9 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
         <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]" style={catBadgeStyle(categories, task.category)}>
           <CategoryIcon name={task.category} color="currentColor" size={11} />{task.category}
         </span>
+        {task.done && completionDay(task) !== todayStr() && (
+          <span className="text-[11px] text-slate-400" title="The day it was completed">Completed {fmtShortDay(completionDay(task))}</span>
+        )}
         {task.recur && (
           <span className="flex items-center gap-0.5 rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold text-teal-700 sm:text-[11px] dark:text-teal-300" title={`Repeats: ${RECUR_LABEL[task.recur]}`}>
             <RotateCw size={10} /> {RECUR_LABEL[task.recur]}
@@ -3219,4 +3359,7 @@ function EmptyState({ icon: Icon, title, copy }) {
 }
 
 // the app's pure logic, exported so the automated tests (npm test) can check it without a browser
-export { sanitizeImported, revivedTask, reminderItems, patchItems, normalizeForToday, parseQuickAdd, migrateReminder, nextAlertAt, nextOccurrence, reminderTrigger }
+export {
+  sanitizeImported, revivedTask, reminderItems, patchItems, normalizeForToday, parseQuickAdd, migrateReminder, nextAlertAt, nextOccurrence, reminderTrigger,
+  markDone, markUndone, rescheduleTask, pendingCopy, completionDay, stampChanged, tombstones, mergeTasks, mergeArchive, withFreshAlarms,
+}
