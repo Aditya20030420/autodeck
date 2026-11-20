@@ -10,8 +10,11 @@ import { alertTimes } from '../.test-build/androidReminders.mjs'
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const day = (off = 0) => { const d = new Date(); d.setDate(d.getDate() + off); return ymd(d) }
-const hm = (min) => { const d = new Date(Date.now() + min * 60000); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
-const rem = (o = {}) => ({ date: day(0), time: '10:00', lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null, ...o })
+// hm(min) is the clock time `min` minutes from now; it remembers that moment's date, so rem({ time: hm(60) }) is right even when
+// the hour crosses midnight (a test run at 23:30 must not turn "in an hour" into "already passed").
+let lastHm = { time: null, date: null }
+const hm = (min) => { const d = new Date(Date.now() + min * 60000); const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; lastHm = { time, date: ymd(d) }; return time }
+const rem = (o = {}) => ({ date: o.time && o.time === lastHm.time ? lastHm.date : day(0), time: '10:00', lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null, ...o })
 const task = (o = {}) => ({ id: crypto.randomUUID(), text: 'T', priority: 'Medium', category: 'Work', reminder: null, recur: null, done: false, pinned: false,
   day: day(0), createdAt: 1, order: 1, subtasks: [], ...o })
 

@@ -8,6 +8,7 @@ import {
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
   Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles,
+  ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -1605,6 +1606,7 @@ const goalStatus = (g) => {
   const subs = g.subtasks || []
   return subs.length && subs.some((s) => s.done) ? 'In Progress' : 'Pending'
 }
+const shiftDay = (ymd, n) => { const d = new Date(`${ymd}T00:00`); d.setDate(d.getDate() + n); return dateStr(d) }
 const fmtShortDay = (ymd) => new Date(`${ymd}T00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 const fmtDate = (ymd) => new Date(`${ymd}T00:00`).toLocaleDateString(undefined,
   { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -1710,62 +1712,99 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
 
   return (
     <div className="space-y-5">
-      {/* Date picker + status */}
-      <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] p-4">
-        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          <ClipboardList size={16} className="text-teal-500" />
-          <input type="date" value={date} max={todayStr()} onChange={(e) => { if (e.target.value) setDate(e.target.value) }}
+      {/* Date, day arrows, status */}
+      <div className="glass animate-fade-in flex flex-wrap items-center gap-3 rounded-[1.5rem] p-4">
+        <div className="flex items-center gap-1">
+          <button onClick={() => setDate(shiftDay(date, -1))} aria-label="Previous day" title="Previous day"
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-500/10 active:scale-90"><ChevronLeft size={18} /></button>
+          <button onClick={() => setDate(shiftDay(date, 1))} disabled={isToday} aria-label="Next day" title="Next day"
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-500/10 active:scale-90 disabled:opacity-30 disabled:hover:bg-transparent"><ChevronRight size={18} /></button>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-teal-500">{isToday ? 'Today' : 'Past report'}</div>
+          <div className="truncate text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">{fmtDate(date)}</div>
+        </div>
+        <label className="ml-auto flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <input type="date" value={date} max={todayStr()} aria-label="Report date" onChange={(e) => { if (e.target.value) setDate(e.target.value) }}
             className="glass-sm rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
         </label>
-        <span className={`rounded-full px-3 py-1 text-xs font-bold ${status === 'Finalized' ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}`}>
+        {!isToday && (
+          <button onClick={() => setDate(todayStr())}
+            className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">Back to today</button>
+        )}
+        <span className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${status === 'Finalized' ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}`}>
+          {status === 'Finalized' ? <CheckCircle size={12} /> : <Pencil size={11} />}
           {status}{saved?.sharedAt ? ` · shared ${new Date(saved.sharedAt).toLocaleDateString()}` : ''}
         </span>
       </div>
 
-      {/* Summary */}
-      <div className="glass grid grid-cols-2 gap-3 rounded-[1.5rem] p-5 sm:grid-cols-4">
-        {[['Goals', goals.length], ['Completed', done], ['Remaining', goals.length - done], ['Progress', `${pct}%`]].map(([k, v]) => (
-          <div key={k} className="text-center">
-            <div className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{v}</div>
-            <div className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{k}</div>
+      {/* Summary: a progress ring and three counts */}
+      <div className="glass animate-fade-in flex flex-wrap items-center gap-5 rounded-[1.5rem] p-5">
+        <div className="relative shrink-0">
+          <svg width="88" height="88" viewBox="0 0 88 88" className="-rotate-90">
+            <defs>
+              <linearGradient id="rep-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#0EA5E9" /><stop offset="100%" stopColor="#2DD4BF" />
+              </linearGradient>
+            </defs>
+            <circle cx="44" cy="44" r="34" strokeWidth="9" className="fill-none stroke-slate-200/70 dark:stroke-white/10" />
+            <circle cx="44" cy="44" r="34" strokeWidth="9" strokeLinecap="round" stroke="url(#rep-grad)" className="fill-none [transition:stroke-dashoffset_.7s_cubic-bezier(0.32,0.72,0,1)]"
+              strokeDasharray={2 * Math.PI * 34} strokeDashoffset={2 * Math.PI * 34 * (1 - pct / 100)} />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="bg-gradient-to-br from-sky-500 to-teal-400 bg-clip-text text-xl font-extrabold tabular-nums text-transparent">{pct}<span className="text-xs">%</span></span>
           </div>
-        ))}
-        <div className="col-span-2 sm:col-span-4">
-          <div className="h-2 overflow-hidden rounded-full bg-slate-500/10">
-            <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-sky-500 transition-all duration-500" style={{ width: `${pct}%` }} />
-          </div>
+        </div>
+        <div className="grid min-w-0 flex-1 grid-cols-3 gap-2 sm:gap-3">
+          {[['Goals', goals.length, 'bg-sky-500/10 text-sky-600 dark:text-sky-300'],
+            ['Completed', done, 'bg-lime-500/15 text-lime-700 dark:text-lime-300'],
+            ['Remaining', goals.length - done, 'bg-amber-500/15 text-amber-700 dark:text-amber-300']].map(([k, v, tone]) => (
+            <div key={k} className={`rounded-2xl px-3 py-3 text-center ${tone}`}>
+              <div className="text-2xl font-extrabold tabular-nums leading-none sm:text-3xl">{v}</div>
+              <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wider opacity-80">{k}</div>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Goals */}
-      <div className="glass rounded-[1.5rem] p-5">
-        <h3 className="mb-3 text-sm font-bold text-slate-700 dark:text-slate-200">Today's Goals</h3>
+      <div className="glass animate-fade-in rounded-[1.5rem] p-5">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+          <Target size={15} className="text-teal-500" /> {isToday ? "Today's goals" : 'Goals'}
+        </h3>
         {isToday && (
           <div className="mb-3 flex gap-2">
             <input value={newGoal} onChange={(e) => setNewGoal(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') addGoal() }}
               placeholder="Add a goal for today…"
               className="glass-sm flex-1 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
-            <button onClick={addGoal} className="rounded-full bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-600 active:scale-95">
+            <button onClick={addGoal} aria-label="Add goal" className="rounded-full bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-600 active:scale-95">
               <Plus size={16} strokeWidth={2.5} />
             </button>
           </div>
         )}
         {goals.length === 0 ? (
-          <p className="py-4 text-center text-sm text-slate-400">{isToday ? 'No goals yet. Add one above.' : 'No report saved for this date.'}</p>
+          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-dashed border-slate-300/60 py-7 text-center dark:border-slate-600/50">
+            <Target size={22} className="text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-400">{isToday ? 'No goals yet. Add one above.' : 'No report saved for this date.'}</p>
+          </div>
         ) : (
           <ul className="space-y-2">
             {goals.map((g) => {
-              const s = goalStatus(g)
+              const st = goalStatus(g)
+              const subs = g.subtasks || []
+              const subDone = subs.filter((x) => x.done).length
               return (
-                <li key={g.id} className="glass-sm flex items-center gap-3 rounded-xl px-3 py-2.5">
+                <li key={g.id} className="glass-sm flex items-center gap-3 rounded-xl px-3 py-2.5 transition duration-200 hover:-translate-y-px hover:shadow-md">
                   <button onClick={() => isToday && onToggleGoal(g.id)} disabled={!isToday}
                     title={isToday ? 'Toggle complete' : 'Read-only (past date)'}
                     className="shrink-0 transition active:scale-90 disabled:cursor-default">
                     {g.done ? <CheckCircle size={20} className="text-lime-500" /> : <Circle size={20} className="text-slate-300 dark:text-slate-600" />}
                   </button>
-                  <span className={`flex-1 text-sm ${g.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{g.text}</span>
-                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge(s)}`}>{s}</span>
+                  {g.priority && <PriorityChip p={g.priority} size={12} />}
+                  <span className={`min-w-0 flex-1 break-words text-sm ${g.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>{g.text}</span>
+                  {subs.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{subDone}/{subs.length} steps</span>}
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge(st)}`}>{st}</span>
                 </li>
               )
             })}
@@ -1775,10 +1814,10 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
 
       {/* Blockers & Notes */}
       <div className="grid gap-5 md:grid-cols-2">
-        {[['Challenges / Blockers', blockers, 'blockers', "What's getting in the way…"],
-          ['Additional Notes', notes, 'notes', 'Anything else worth sharing…']].map(([label, val, key, ph]) => (
-          <div key={key} className="glass rounded-[1.5rem] p-5">
-            <h3 className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">{label}</h3>
+        {[['Challenges / Blockers', blockers, 'blockers', "What's getting in the way…", TriangleAlert, 'text-amber-500'],
+          ['Additional Notes', notes, 'notes', 'Anything else worth sharing…', StickyNote, 'text-sky-500']].map(([label, val, key, ph, Icon, tone]) => (
+          <div key={key} className="glass animate-fade-in rounded-[1.5rem] p-5">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200"><Icon size={15} className={tone} /> {label}</h3>
             <textarea value={val} onChange={(e) => patchReport({ [key]: e.target.value })} rows={4} placeholder={ph}
               className="glass-sm w-full resize-y rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
           </div>
@@ -1813,7 +1852,7 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
       {/* History */}
       {history.length > 0 && (
         <div className="glass rounded-[1.5rem] p-5">
-          <h3 className="mb-3 text-sm font-bold text-slate-700 dark:text-slate-200">Previous reports</h3>
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200"><HistoryIcon size={15} className="text-teal-500" /> Previous reports</h3>
           <ul className="space-y-2">
             {history.map(([d, r]) => {
               const g = r.snapshot ?? []
@@ -1823,8 +1862,9 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
                 <li key={d}>
                   <button onClick={() => setDate(d)}
                     className="glass-sm flex w-full items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-left transition hover:ring-2 hover:ring-teal-500/20">
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{fmtDate(d)}</span>
-                    <span className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="min-w-0 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{fmtDate(d)}</span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-slate-500/10 sm:block"><span className="block h-full rounded-full bg-gradient-to-r from-sky-500 to-teal-400" style={{ width: `${p}%` }} /></span>
                       {dn}/{g.length} · {p}%
                       <span className={`rounded-full px-2 py-0.5 font-bold ${r.status === 'Finalized' ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300' : 'bg-slate-500/10'}`}>{r.status ?? 'Draft'}</span>
                     </span>
