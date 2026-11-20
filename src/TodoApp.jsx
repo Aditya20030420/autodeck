@@ -2078,8 +2078,11 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
   const lastDay = dateStr(days[6])
   // Tasks scheduled beyond the 7 shown days would otherwise be invisible.
   const later = tasks.filter((x) => x.day > lastDay).sort((a, b) => a.day.localeCompare(b.day) || (a.done - b.done))
+  const weekItems = tasks.filter((x) => x.day >= t0 && x.day <= lastDay)
+  const weekDone = weekItems.filter((x) => x.done).length
+  const fmtDay = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   const renderItem = (x, isToday, showDate = false) => (
-    <li key={x.id} className="glass-sm rounded-lg">
+    <li key={x.id} className="glass-sm rounded-lg transition duration-200 hover:-translate-y-px hover:shadow-md">
                       <div className="flex items-center gap-1.5 px-2 py-1.5">
                         <button onClick={() => onToggle(x.id)} aria-label={x.done ? 'Mark incomplete' : 'Mark complete'}
                           className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition ${
@@ -2121,23 +2124,49 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
   )
   return (
     <>
+    <div className="animate-fade-in mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+      <CalendarDays size={16} className="text-teal-500" />
+      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{fmtDay(days[0])} – {fmtDay(days[6])}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        {weekItems.length === 0 ? 'Nothing scheduled this week' : `${weekItems.length - weekDone} open · ${weekDone} done`}
+      </span>
+    </div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {days.map((d) => {
+      {days.map((d, di) => {
         const ds = dateStr(d)
         const items = tasks.filter((x) => x.day === ds)
           .sort((a, b) => (a.done - b.done) || PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority])
         const isToday = ds === t0
         const openCount = items.filter((x) => !x.done).length
+        const doneN = items.length - openCount
+        const weekend = d.getDay() === 0 || d.getDay() === 6
         return (
-          <div key={ds} className={`glass rounded-2xl p-3 ${isToday ? 'ring-2 ring-teal-500/40' : ''}`}>
-            <div className="mb-2 flex items-baseline justify-between">
-              <span className={`text-sm font-bold ${isToday ? 'text-teal-600 dark:text-teal-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                {isToday ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' })}
-              </span>
-              <span className="text-xs text-slate-400">{d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+          <div key={ds} style={{ animationDelay: `${di * 40}ms` }}
+            className={`glass animate-fade-up flex flex-col rounded-2xl p-3 ${isToday ? 'ring-2 ring-teal-500/50 shadow-soft' : ''}`}>
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className={`flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl leading-none ${
+                isToday ? 'bg-gradient-to-br from-teal-400 to-sky-500 text-white shadow-sm'
+                : weekend ? 'bg-slate-500/10 text-slate-500 dark:text-slate-400' : 'bg-sky-500/10 text-sky-600 dark:text-sky-300'}`}>
+                <span className="text-base font-extrabold tabular-nums">{d.getDate()}</span>
+                <span className="mt-0.5 text-[8px] font-bold uppercase tracking-wider opacity-80">{d.toLocaleDateString(undefined, { month: 'short' })}</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-bold ${isToday ? 'text-teal-600 dark:text-teal-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                  {isToday ? 'Today' : di === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long' })}
+                </div>
+                <div className="text-[11px] text-slate-400">{items.length === 0 ? 'Free day' : `${items.length} task${items.length === 1 ? '' : 's'}`}</div>
+              </div>
             </div>
+            {items.length > 0 && (
+              <div className="mb-2 h-1 overflow-hidden rounded-full bg-slate-500/10" role="progressbar" aria-label={`${doneN} of ${items.length} done`}
+                aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={doneN}>
+                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-teal-400 transition-[width] duration-500" style={{ width: `${(doneN / items.length) * 100}%` }} />
+              </div>
+            )}
             {items.length === 0 ? (
-              <p className="py-4 text-center text-xs text-slate-300 dark:text-slate-600">—</p>
+              <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300/60 py-5 text-center text-xs text-slate-400 dark:border-slate-600/50">
+                Nothing planned
+              </div>
             ) : (
               <ul className="space-y-1.5">
                 {items.map((x) => renderItem(x, isToday))}
