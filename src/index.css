@@ -179,3 +179,20 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
 .thin-scroll { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.45) transparent; }
 .thin-scroll::-webkit-scrollbar { width: 8px; }
 .thin-scroll::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+
+/* The Settings scroller: a slim rounded thumb in the brand teal that brightens on hover, a track inset from the rounded corners,
+   and a soft fade on whichever side still has content (the data-edge-* flags are set from the panel's scroll position). */
+.fancy-scroll { scrollbar-width: thin; scrollbar-color: rgba(45,212,191,.45) transparent; }
+.fancy-scroll::-webkit-scrollbar { width: 10px; }
+.fancy-scroll::-webkit-scrollbar-track { background: transparent; margin: 6px 0; }
+.fancy-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(45,212,191,.55), rgba(14,165,233,.55));
+  border-radius: 9999px; border: 3px solid transparent; background-clip: content-box;
+}
+.fancy-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(45,212,191,.95), rgba(14,165,233,.95)); background-clip: content-box; }
+.scroll-fade[data-edge-bottom="true"] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.scroll-fade[data-edge-top="true"] { -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to top, #000 calc(100% - 20px), transparent); }
+.scroll-fade[data-edge-top="true"][data-edge-bottom="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+}

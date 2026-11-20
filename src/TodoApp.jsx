@@ -3053,14 +3053,32 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
   // Desktop app only: keep running in the tray (and start with Windows) so reminders arrive while the window is closed.
   const [bg, setBg] = useState(null)
   useEffect(() => { window.autodeck?.getBackground?.().then(setBg).catch(() => {}) }, [])
+  // The settings scroll inside the dialog (the title stays put). `edge` tells which sides still have content beyond them,
+  // so a soft fade shows there and nowhere else.
+  const scroller = useRef(null)
+  const [edge, setEdge] = useState({ top: false, bottom: false })
+  const measure = useCallback(() => {
+    const el = scroller.current
+    if (!el) return
+    const top = el.scrollTop > 2, bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 2
+    setEdge((e) => (e.top === top && e.bottom === bottom ? e : { top, bottom }))
+  }, [])
+  useLayoutEffect(() => {
+    measure()
+    const el = scroller.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el); if (el.firstElementChild) ro.observe(el.firstElementChild)
+    return () => ro.disconnect()
+  }, [measure])
   const changeBg = (on) => { setBg(on); window.autodeck?.setBackground?.(on) }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div role="dialog" aria-label="Settings"
-        className="glass animate-fade-up relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-[1.5rem] p-6 shadow-soft">
-        <div className="mb-4 flex items-center gap-2">
+        className="glass animate-fade-up relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-[1.5rem] shadow-soft">
+        <div className={`flex shrink-0 items-center gap-2 px-6 pb-3 pt-6 transition-shadow duration-200 ${edge.top ? 'shadow-[0_8px_14px_-12px_rgba(0,0,0,0.5)]' : ''}`}>
           <Settings size={18} className="text-teal-500" />
           <div className="leading-tight">
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Reminder & notification settings</h2>
@@ -3069,7 +3087,9 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
           <button onClick={onClose} aria-label="Close settings" className="ml-auto rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-700 dark:hover:bg-white/10"><X size={18} /></button>
         </div>
 
-        <div className="space-y-4 text-sm">
+        <div ref={scroller} onScroll={measure} data-edge-top={edge.top} data-edge-bottom={edge.bottom}
+          className="fancy-scroll scroll-fade min-h-0 flex-1 overflow-y-auto pb-6 pl-6 pr-4 pt-1 text-sm">
+        <div className="space-y-4">
           {/* Desktop notifications */}
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -3176,7 +3196,9 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
 
           <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10">
             Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.
-          </p>        </div>
+          </p>
+        </div>
+        </div>
       </div>
     </div>
   )
