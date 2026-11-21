@@ -2596,6 +2596,15 @@ function Select({ value, onChange, label, title, className = '', style, lead, di
   )
 }
 
+/** A control with a small caption above it (Priority, Category, ...). */
+function Captioned({ text, children }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{text}</span>
+      {children}
+    </div>
+  )
+}
 /** A pill-shaped dropdown with a small icon or colour dot in front. */
 function ChipSelect({ lead, label, value, onChange, tint, children }) {
   return (
@@ -2610,7 +2619,7 @@ const inPreset = (opts, v) => opts.some(([, x]) => x === v)
 
 /** Shared reminder configuration row. Emits a reminder object (no lastAlert/snooze)
     or null via onChange. Used by the add form and the per-task editor. */
-function ReminderEditor({ initial, onChange, defaults }) {
+function ReminderEditor({ initial, onChange, defaults, caption }) {
   const [on, setOn] = useState(!!initial)
   const [date, setDate] = useState(initial?.date || todayStr())
   const [time, setTime] = useState(initial?.time || '')
@@ -2626,31 +2635,48 @@ function ReminderEditor({ initial, onChange, defaults }) {
   }, [on, date, time, lead, repeat])
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-end gap-2 text-sm">
+      <div className="flex flex-col gap-1">
+        {caption && <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{caption}</span>}
       <label className={`${CHIP_BASE} cursor-pointer gap-1.5 focus-within:ring-2 focus-within:ring-sky-500/40 ${on ? 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'text-slate-600 hover:border-slate-300 dark:text-slate-300'}`}
         title="Alert (in-app banner + sound, plus desktop when allowed) on a date/time">
         <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="sr-only" />
         <Bell size={14} strokeWidth={2.2} /> Remind me
       </label>
+      </div>
       {on && (
-        <>
-          <input type="date" value={date} min={todayStr()} onChange={(e) => setDate(e.target.value)} aria-label="Reminder date" className={REM_CLS} />
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Reminder time" className={REM_CLS} />
-          <Select label="Lead time" title="Alert this long before the time" className={REM_CLS}
-            value={leadCustom ? 'custom' : lead}
-            onChange={(e) => { if (e.target.value === 'custom') setLeadCustom(true); else { setLeadCustom(false); setLead(+e.target.value) } }}>
-            {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-            <option value="custom">Custom…</option>
-          </Select>
-          {leadCustom && <input type="number" min="1" value={lead} onChange={(e) => setLead(e.target.value)} aria-label="Custom minutes before" title="Minutes before" className={`${REM_CLS} w-24`} placeholder="min" />}
-          <Select label="Repeat interval" title="Repeat until the task is done" className={REM_CLS}
-            value={repeatCustom ? 'custom' : repeat}
-            onChange={(e) => { if (e.target.value === 'custom') setRepeatCustom(true); else { setRepeatCustom(false); setRepeat(+e.target.value) } }}>
-            {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-            <option value="custom">Custom…</option>
-          </Select>
-          {repeatCustom && <input type="number" min="1" value={repeat} onChange={(e) => setRepeat(e.target.value)} aria-label="Custom repeat minutes" title="Repeat every N minutes" className={`${REM_CLS} w-24`} placeholder="min" />}
-        </>
+        // the reminder's details sit in their own panel under the pills: every field has a name, and a sentence says what will happen
+        <div className="animate-fade-up basis-full rounded-2xl border border-slate-200/70 bg-slate-500/[0.04] p-3 dark:border-slate-700/60">
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2.5">
+            <label className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Date
+              <input type="date" value={date} min={todayStr()} onChange={(e) => setDate(e.target.value)} aria-label="Reminder date" className={REM_CLS} /></label>
+            <label className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Time
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Reminder time"
+                className={`${REM_CLS} ${time ? '' : 'border-amber-400/70'}`} /></label>
+            <div className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Alert before
+              <Select label="Lead time" title="Alert this long before the time" className={REM_CLS}
+                value={leadCustom ? 'custom' : lead}
+                onChange={(e) => { if (e.target.value === 'custom') setLeadCustom(true); else { setLeadCustom(false); setLead(+e.target.value) } }}>
+                {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                <option value="custom">Custom…</option>
+              </Select></div>
+            {leadCustom && <input type="number" min="1" value={lead} onChange={(e) => setLead(e.target.value)} aria-label="Custom minutes before" title="Minutes before" className={`${REM_CLS} w-24`} placeholder="min" />}
+            <div className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Repeat
+              <Select label="Repeat interval" title="Repeat until the task is done" className={REM_CLS}
+                value={repeatCustom ? 'custom' : repeat}
+                onChange={(e) => { if (e.target.value === 'custom') setRepeatCustom(true); else { setRepeatCustom(false); setRepeat(+e.target.value) } }}>
+                {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                <option value="custom">Custom…</option>
+              </Select></div>
+            {repeatCustom && <input type="number" min="1" value={repeat} onChange={(e) => setRepeat(e.target.value)} aria-label="Custom repeat minutes" title="Repeat every N minutes" className={`${REM_CLS} w-24`} placeholder="min" />}
+          </div>
+          <p className={`mt-2.5 flex items-center gap-1.5 text-xs ${time ? 'text-slate-500 dark:text-slate-400' : 'font-semibold text-amber-600 dark:text-amber-400'}`}>
+            <Bell size={12} className={time ? 'text-sky-500' : ''} />
+            {time
+              ? `Alerts ${date === todayStr() ? 'today' : date} at ${fmtTime(time)}${+lead > 0 ? `, ${fmtDur(+lead)} before` : ''}${+repeat > 0 ? `, then every ${fmtDur(+repeat)} until done` : ''}.`
+              : 'Pick a time to switch this reminder on.'}
+          </p>
+        </div>
       )}
     </div>
   )
@@ -2770,24 +2796,32 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
-          tint={PRIORITY_HEX[priority]} lead={<PriorityIcon p={priority} />}>
-          {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} />}>{p} priority</option>)}
-        </ChipSelect>
-        <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} tint={catColor(categories, category)} lead={catDot(category)}>
-          {categories.map((c) => <option key={c.name} value={c.name} icon={<CategoryIcon name={c.name} color={c.color} />}>{c.name}</option>)}
-        </ChipSelect>
-        <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
-          {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
-        </ChipSelect>
+      <div className="mt-3 flex flex-wrap items-end gap-x-2 gap-y-2.5 text-sm">
+        <Captioned text="Priority">
+          <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
+            tint={PRIORITY_HEX[priority]} lead={<PriorityIcon p={priority} />}>
+            {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} />}>{p} priority</option>)}
+          </ChipSelect>
+        </Captioned>
+        <Captioned text="Category">
+          <ChipSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)} tint={catColor(categories, category)} lead={catDot(category)}>
+            {categories.map((c) => <option key={c.name} value={c.name} icon={<CategoryIcon name={c.name} color={c.color} />}>{c.name}</option>)}
+          </ChipSelect>
+        </Captioned>
+        <Captioned text="Repeat">
+          <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
+            {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
+          </ChipSelect>
+        </Captioned>
+        <Captioned text="Steps">
         <button type="button" onClick={() => { setSubsOpen((o) => !o); setTimeout(() => subRef.current?.focus(), 50) }} aria-expanded={subsOpen}
           title="Break the task into steps"
           className={`${CHIP_BASE} gap-1.5 hover:border-slate-300 ${subsOpen || subCount ? 'border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300' : 'text-slate-600 dark:text-slate-300'}`}>
           <ListTodo size={14} strokeWidth={2.2} /> Subtasks
           {subCount > 0 && <span className="rounded-full bg-teal-500/20 px-1.5 text-[11px] font-bold tabular-nums">{subCount}</span>}
         </button>
-        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} />
+        </Captioned>
+        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} caption="Reminder" />
         {rem && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
