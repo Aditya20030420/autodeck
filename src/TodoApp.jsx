@@ -2270,6 +2270,60 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
 
 /* --------------------------------- Progress -------------------------------- */
 /** @param {{pct:number, done:number, total:number, celebrate:boolean}} props */
+/* Animated glyphs for the progress tiles. Each one is drawn for its tile and moves in its own way, only while `on` (it has something
+   to say); otherwise it rests as a still icon. The motion itself lives in index.css (.gl-*). */
+const GLYPH = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, className: 'overflow-visible' }
+/** To do: two boxes get ticked one after the other, their lines sliding out, then the list resets. */
+function TodoGlyph({ on }) {
+  return (
+    <svg {...GLYPH} className={`overflow-visible ${on ? 'gl-todo' : ''}`}>
+      <path className="gl-tick" pathLength="1" style={{ '--d': '0s' }} d="M3 6.5l2 2 3.5-4" />
+      <path className="gl-line" style={{ '--d': '0s' }} d="M12.5 6.5H21" />
+      <path className="gl-tick" pathLength="1" style={{ '--d': '.6s' }} d="M3 13.5l2 2 3.5-4" />
+      <path className="gl-line" style={{ '--d': '.6s' }} d="M12.5 13.5H21" />
+      <rect x="3" y="18.5" width="5.5" height="3.5" rx="1" className="opacity-60" />
+      <path d="M12.5 20.2H18" className="opacity-60" />
+    </svg>
+  )
+}
+/** High priority: three signal bars climb one by one and the tallest throbs. */
+function BarsGlyph({ on }) {
+  return (
+    <svg {...GLYPH} strokeWidth="0" fill="currentColor" className={`overflow-visible ${on ? 'gl-bars' : ''}`}>
+      <rect className="gl-bar" style={{ '--d': '0s' }} x="3" y="13" width="4.5" height="8" rx="1.2" />
+      <rect className="gl-bar" style={{ '--d': '.18s' }} x="9.75" y="8" width="4.5" height="13" rx="1.2" />
+      <rect className="gl-bar gl-bar-top" style={{ '--d': '.36s' }} x="16.5" y="3" width="4.5" height="18" rx="1.2" />
+    </svg>
+  )
+}
+/** Overdue: a clock whose hand sweeps round with a ring pinging out of it; when nothing is overdue, a circle and tick draw themselves once. */
+function ClockGlyph({ on }) {
+  return on ? (
+    <svg {...GLYPH}>
+      <circle className="gl-ping" cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="9" />
+      <path className="gl-hand" d="M12 12V6.5" />
+      <path className="gl-hand gl-hand-s" d="M12 12h4" />
+    </svg>
+  ) : (
+    <svg {...GLYPH}>
+      <circle className="gl-draw" pathLength="1" cx="12" cy="12" r="9" style={{ '--d': '0s' }} />
+      <path className="gl-draw" pathLength="1" d="M7.8 12.4l3 3 5.6-6.2" style={{ '--d': '.45s' }} />
+    </svg>
+  )
+}
+/** Day streak: a flame that flickers on two layers while sparks drift up from it. */
+function FlameGlyph({ on }) {
+  return (
+    <svg {...GLYPH} className={`overflow-visible ${on ? 'gl-flame' : ''}`}>
+      <path className="gl-flame-out" d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+      <path className="gl-flame-in" d="M12 20a3 3 0 0 1-3-3c0-1.2 1-2.2 3-4 2 1.8 3 2.8 3 4a3 3 0 0 1-3 3z" />
+      <circle className="gl-spark" style={{ '--d': '0s' }} cx="8" cy="5" r=".7" fill="currentColor" stroke="none" />
+      <circle className="gl-spark" style={{ '--d': '.9s' }} cx="16.5" cy="6" r=".7" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0, overdue = 0, next = null, activity = null }) {
   const R = 30, C = 2 * Math.PI * R
   const msg = total === 0 ? 'Add your first task to get going.'
@@ -2280,10 +2334,10 @@ function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0,
     : 'All done. Beautiful.'
   const peak = Math.max(1, ...(activity?.days || []).map((d) => d.count))
   const tiles = [
-    { k: 'To do', v: pending, tone: 'bg-sky-500/10 text-sky-600 dark:text-sky-300', icon: <ListTodo size={15} /> },
-    { k: 'High priority', v: high, tone: high ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400', icon: <PriorityIcon p="High" size={15} /> },
-    { k: 'Overdue', v: overdue, tone: overdue ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-lime-500/15 text-lime-700 dark:text-lime-300', icon: overdue ? <TriangleAlert size={15} /> : <CheckCircle2 size={15} /> },
-    { k: 'Day streak', v: activity?.streak || 0, tone: activity?.streak ? 'bg-orange-500/15 text-orange-600 dark:text-orange-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400', icon: <Flame size={15} /> },
+    { k: 'To do', v: pending, tone: 'bg-sky-500/10 text-sky-600 dark:text-sky-300', icon: <TodoGlyph on={pending > 0} />, on: pending > 0 },
+    { k: 'High priority', v: high, tone: high ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400', icon: <BarsGlyph on={high > 0} />, on: high > 0 },
+    { k: 'Overdue', v: overdue, tone: overdue ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-lime-500/15 text-lime-700 dark:text-lime-300', icon: <ClockGlyph on={overdue > 0} />, on: overdue > 0 },
+    { k: 'Day streak', v: activity?.streak || 0, tone: activity?.streak ? 'bg-orange-500/15 text-orange-600 dark:text-orange-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400', icon: <FlameGlyph on={!!activity?.streak} />, on: !!activity?.streak },
   ]
 
   return (
@@ -2331,10 +2385,10 @@ function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0,
       {/* the day at a glance */}
       <div className="relative mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         {tiles.map((t, i) => (
-          <div key={t.k} style={{ animationDelay: `${i * 50}ms` }} className={`animate-fade-up flex items-center gap-2.5 rounded-2xl px-3.5 py-3 ${t.tone}`}>
-            <span className="shrink-0 opacity-90">{t.icon}</span>
+          <div key={t.k} style={{ animationDelay: `${i * 50}ms` }} className={`group/tile animate-fade-up flex items-center gap-2.5 rounded-2xl px-3.5 py-3 ${t.tone}`}>
+            <span key={`${t.k}-${t.on}`} className="inline-flex shrink-0 opacity-90 transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover/tile:scale-125">{t.icon}</span>
             <div className="min-w-0 leading-none">
-              <div className="text-xl font-extrabold tabular-nums">{t.v}</div>
+              <div key={t.v} className="animate-pop text-xl font-extrabold tabular-nums">{t.v}</div>
               <div className="mt-1 truncate text-[10px] font-bold uppercase tracking-wider opacity-75">{t.k}</div>
             </div>
           </div>
