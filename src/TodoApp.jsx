@@ -1913,6 +1913,26 @@ const KEEP_OPTIONS = [['Keep for ever', 0], ['Keep 30 days', 30], ['Keep 90 days
 const SORTS = [['newest', 'Newest first'], ['oldest', 'Oldest first'], ['priority', 'Priority'], ['az', 'A to Z']]
 const fmtStamp = (ms) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 const dayOf = (ms) => dateStr(new Date(ms))
+/** `text` with every match of `q` marked (for the search box). */
+function Hi({ text, q }) {
+  const needle = (q || '').trim()
+  if (!needle) return text
+  const parts = []
+  const low = text.toLowerCase(), n = needle.toLowerCase()
+  let i = 0
+  for (let at = low.indexOf(n); at !== -1; at = low.indexOf(n, i)) {
+    if (at > i) parts.push(text.slice(i, at))
+    parts.push(<mark key={at} className="rounded bg-yellow-400/35 px-0.5 text-inherit">{text.slice(at, at + n.length)}</mark>)
+    i = at + n.length
+  }
+  parts.push(text.slice(i))
+  return parts
+}
+/** How long ago, in a few characters: just now, 5m ago, 3h ago, 2d ago; older than a week shows the date. */
+const agoLabel = (ms, now = Date.now()) => {
+  const m = Math.floor((now - ms) / 60000)
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : m < 10080 ? `${Math.floor(m / 1440)}d ago` : new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
 
 /** Everything that left the task list: search, filter, sort, restore, delete for good, export, and automatic clean-up. */
 function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, onDelete }) {
@@ -1956,7 +1976,13 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
   // only what is on screen can be selected or acted on, so nothing hidden by a filter is ever touched
   const picked = shown.filter((x) => sel.has(x.id))
   const allPicked = shown.length > 0 && picked.length === shown.length
-  const toggle = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const lastPicked = useRef(null)  // the row last ticked, so shift-click can tick everything between it and the next one
+  const toggle = (id, range = false) => {
+    const a = shown.findIndex((x) => x.id === lastPicked.current), b = shown.findIndex((x) => x.id === id)
+    const between = range && a !== -1 && b !== -1 ? shown.slice(Math.min(a, b), Math.max(a, b) + 1).map((x) => x.id) : null
+    lastPicked.current = id  // (kept out of the state update below, which React may run twice)
+    setSel((s) => { const n = new Set(s); if (between) between.forEach((i) => n.add(i)); else n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
   const pickAll = () => setSel(allPicked ? new Set() : new Set(shown.map((x) => x.id)))
   const filtered = !!(query || reason !== 'all' || cat !== 'all' || pri !== 'all' || from || to)
   const clearFilters = () => { setQuery(''); setReason('all'); setCat('all'); setPri('all'); setFrom(''); setTo('') }
@@ -1985,10 +2011,10 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
       <li key={x.id} className={`glass-sm animate-fade-in rounded-2xl border-l-[3px] px-3 py-2.5 transition duration-200 hover:-translate-y-px hover:shadow-md ${sel.has(x.id) ? 'ring-2 ring-teal-500/40' : ''}`}
         style={{ borderLeftColor: catColor(categories, x.category) }}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <input type="checkbox" checked={sel.has(x.id)} onChange={() => toggle(x.id)} aria-label={`Select ${x.text}`} className="h-4 w-4 shrink-0 accent-teal-500" />
+          <input type="checkbox" checked={sel.has(x.id)} onChange={(e) => toggle(x.id, !!e.nativeEvent.shiftKey)} aria-label={`Select ${x.text}`} className="h-4 w-4 shrink-0 accent-teal-500" />
           <PriorityChip p={x.priority} size={13} />
           <button onClick={() => setOpenId(open ? null : x.id)} aria-expanded={open}
-            className={`min-w-[9rem] flex-1 break-words text-left text-sm ${open ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : ''}`}>{x.text}</button>
+            className={`min-w-[9rem] flex-1 break-words text-left text-sm ${open ? '' : 'line-clamp-2'} ${x.done ? 'text-slate-400 line-through' : ''}`}><Hi text={x.text} q={query} /></button>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <button onClick={() => doRestore([x.id])} title={x.done ? 'Restore (stays completed)' : 'Restore to today'} aria-label={x.done ? 'Restore (stays completed)' : 'Restore to today'}
               className="flex items-center gap-1 rounded-full bg-teal-500/10 px-2.5 py-1 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-500/20 active:scale-95 dark:text-teal-300">
@@ -2013,7 +2039,12 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-[11px] ${REASON_TONE[x.reason] || REASON_TONE.deleted}`}>{ARCHIVE_REASONS[x.reason]}</span>
           {x.done && <span className="inline-flex items-center gap-1 rounded-full bg-lime-500/15 px-2 py-0.5 text-[10px] font-semibold text-lime-700 sm:text-[11px] dark:text-lime-300"><Check size={10} strokeWidth={3} />Was done</span>}
           {subs.length > 0 && <span className="text-[11px] text-slate-400">{subs.filter((s) => s.done).length}/{subs.length} subtasks</span>}
-          <span className="text-[11px] text-slate-400">archived {fmtStamp(x.archivedAt)}</span>
+          <span className="text-[11px] text-slate-400" title={fmtStamp(x.archivedAt)}>archived {agoLabel(x.archivedAt)}</span>
+          {keepDays > 0 && (() => {
+            const left = Math.ceil((x.archivedAt + keepDays * 864e5 - Date.now()) / 864e5)
+            return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${left <= 3 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}`} title="The automatic clean-up (Keep archived tasks) removes it then">
+              <Trash2 size={10} /> removed in {Math.max(0, left)}d</span>
+          })()}
         </div>
         {open && (
           <div className="animate-fade-in mt-2 ml-6 space-y-1 rounded-xl bg-slate-500/5 p-2.5 text-xs text-slate-500 dark:bg-white/[0.04] dark:text-slate-400">
@@ -2122,6 +2153,23 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
               </div>
             </div>
           </div>
+
+          {picked.length > 0 && (
+            <div role="toolbar" aria-label="Selected archived tasks" className="animate-pop glass fixed bottom-5 left-1/2 z-30 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 shadow-soft">
+              <span className="text-xs font-bold tabular-nums text-slate-600 dark:text-slate-300">{picked.length} selected</span>
+              <button onClick={() => doRestore(picked.map((x) => x.id))} className={`${pill} flex items-center gap-1 bg-teal-500 text-white hover:bg-teal-600`}><ArchiveRestore size={13} /> Restore</button>
+              {confirm === 'selected' ? (
+                <>
+                  <button onClick={() => doDelete(picked.map((x) => x.id))} className={`${pill} bg-rose-500 text-white`}>Delete {picked.length} for good</button>
+                  <button onClick={() => setConfirm(null)} className={`${pill} text-slate-400`}>Cancel</button>
+                </>
+              ) : (
+                <button onClick={() => setConfirm('selected')} className={`${pill} flex items-center gap-1 bg-slate-500/10 text-slate-600 hover:bg-rose-500/10 hover:text-rose-600 dark:text-slate-300`}><Trash2 size={13} /> Delete</button>
+              )}
+              <button onClick={() => { setSel(new Set()); setConfirm(null) }} aria-label="Clear the selection" title="Clear the selection"
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-500/10 hover:text-slate-600 dark:hover:text-slate-200"><X size={14} /></button>
+            </div>
+          )}
 
           {shown.length === 0 ? (
             <div className="glass rounded-[1.5rem] p-4"><EmptyState icon={Inbox} title="Nothing matches" copy="Try different filters or clear them." /></div>
