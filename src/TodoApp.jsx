@@ -1133,7 +1133,7 @@ export default function TodoApp() {
       id: crypto.randomUUID(),
       text: data.text, priority: data.priority, category: data.category,
       reminder: data.reminder || null, recur: data.recur || null,
-      done: false, pinned: false, day: todayStr(), createdAt: Date.now(),
+      done: false, pinned: false, day: data.day && data.day > todayStr() ? data.day : todayStr(), createdAt: Date.now(),
       order: Date.now(), subtasks: data.subtasks || [],
     }])
   }, [setTasks])
@@ -1434,7 +1434,7 @@ export default function TodoApp() {
           <ArchiveView archive={archive} categories={categories} keepDays={archiveKeep} setKeepDays={setArchiveKeep}
             onRestore={restoreArchived} onDelete={deleteArchived} />
         ) : view === 'week' ? (
-          <WeekView tasks={tasks} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
+          <WeekView tasks={tasks} categories={categories} onAdd={addTask} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
         ) : (
         <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate}
@@ -2146,19 +2146,53 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
 }
 
 /* ---------------------------------- Week ----------------------------------- */
-/** 7-day overview (today + 6). Tasks are grouped by their scheduled day, so
-    postponed and future recurring tasks show up on the right day. */
-function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
+/** Adds a task to one day of the week: a button that turns into a box. The same shortcuts as the main form work (#work !high at 5pm). */
+function WeekDayAdd({ ds, empty, categories, onAdd }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const submit = () => {
+    const p = parseQuickAdd(text, categories)
+    if (!p.text) return
+    onAdd({ text: p.text, priority: p.priority || 'Medium', category: p.category || categories[0]?.name || 'Work', day: ds,
+      reminder: p.reminder ? { date: ds, time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null })
+    setText('')
+  }
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} aria-label={`Add a task on ${ds}`}
+        className={empty
+          ? 'flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300/60 py-5 text-xs font-semibold text-slate-400 transition hover:border-teal-500/60 hover:bg-teal-500/5 hover:text-teal-600 dark:border-slate-600/50 dark:hover:text-teal-300'
+          : 'mt-2 flex items-center justify-center gap-1 rounded-lg py-1 text-[11px] font-semibold text-slate-400 transition hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-300'}>
+        <Plus size={empty ? 14 : 12} strokeWidth={2.4} /> Add task
+      </button>
+    )
+  }
+  return (
+    <div className={`animate-fade-in ${empty ? 'flex-1' : 'mt-2'}`}>
+      <input autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} aria-label={`New task for ${ds}`} placeholder="Task… (Enter)"
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } else if (e.key === 'Escape') { e.stopPropagation(); setText(''); setOpen(false) } }}
+        onBlur={() => { if (!text.trim()) setOpen(false) }}
+        className="w-full rounded-lg border border-teal-500/50 bg-slate-500/[0.06] px-2.5 py-1.5 text-xs outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/30" />
+    </div>
+  )
+}
+
+/** 7-day overview (today + 6), with arrows to look at other weeks. Tasks are grouped by their scheduled day, so
+    postponed and future recurring tasks show up on the right day, and a day can take a new task right in its card. */
+function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, onView, onToggle, onReschedule, onDelete }) {
   const [openId, setOpenId] = useState(null)  // task whose action row is expanded
+  const [offset, setOffset] = useState(0)     // weeks away from the current one
   const t0 = todayStr()
   const days = useMemo(() => {  // rebuilt when the date changes, so the week doesn't go stale past midnight
     const base = new Date()
-    return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d })
-  }, [t0])
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + offset * 7 + i); return d })
+  }, [t0, offset])
+  const firstDay = dateStr(days[0])
   const lastDay = dateStr(days[6])
-  // Tasks scheduled beyond the 7 shown days would otherwise be invisible.
-  const later = tasks.filter((x) => x.day > lastDay).sort((a, b) => a.day.localeCompare(b.day) || (a.done - b.done))
-  const weekItems = tasks.filter((x) => x.day >= t0 && x.day <= lastDay)
+  const tomorrow = dateStr(new Date(Date.now() + 864e5))
+  // Tasks scheduled beyond the 7 shown days would otherwise be invisible (shown under the current week).
+  const later = offset === 0 ? tasks.filter((x) => x.day > lastDay).sort((a, b) => a.day.localeCompare(b.day) || (a.done - b.done)) : []
+  const weekItems = tasks.filter((x) => x.day >= firstDay && x.day <= lastDay)
   const weekDone = weekItems.filter((x) => x.done).length
   const fmtDay = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   const renderItem = (x, isToday, showDate = false) => (
@@ -2205,10 +2239,19 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
   return (
     <>
     <div className="animate-fade-in mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+      <div className="flex items-center gap-0.5">
+        <button onClick={() => setOffset((o) => Math.max(-8, o - 1))} disabled={offset <= -8} aria-label="Previous week" title="Previous week"
+          className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-500/10 active:scale-90 disabled:opacity-30"><ChevronLeft size={16} /></button>
+        <button onClick={() => setOffset((o) => Math.min(52, o + 1))} disabled={offset >= 52} aria-label="Next week" title="Next week"
+          className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-500/10 active:scale-90 disabled:opacity-30"><ChevronRight size={16} /></button>
+      </div>
       <CalendarDays size={16} className="text-teal-500" />
       <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{fmtDay(days[0])} – {fmtDay(days[6])}</span>
+      {offset !== 0 && (
+        <button onClick={() => setOffset(0)} className="rounded-full bg-teal-500 px-2.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-teal-600 active:scale-95">This week</button>
+      )}
       <span className="text-xs text-slate-500 dark:text-slate-400">
-        {weekItems.length === 0 ? 'Nothing scheduled this week' : `${weekItems.length - weekDone} open · ${weekDone} done`}
+        {weekItems.length === 0 ? (offset === 0 ? 'Nothing scheduled this week' : 'Nothing scheduled that week') : `${weekItems.length - weekDone} open · ${weekDone} done`}
       </span>
     </div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -2222,7 +2265,7 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
         const weekend = d.getDay() === 0 || d.getDay() === 6
         return (
           <div key={ds} style={{ animationDelay: `${di * 40}ms` }}
-            className={`glass animate-fade-up flex flex-col rounded-2xl p-3 ${isToday ? 'ring-2 ring-teal-500/50 shadow-soft' : ''}`}>
+            className={`glass animate-fade-up flex flex-col rounded-2xl p-3 ${isToday ? 'ring-2 ring-teal-500/50 shadow-soft' : ds < t0 ? 'opacity-80' : ''}`}>
             <div className="mb-2 flex items-center gap-2.5">
               <div className={`flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl leading-none ${
                 isToday ? 'bg-gradient-to-br from-teal-400 to-sky-500 text-white shadow-sm'
@@ -2232,7 +2275,7 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className={`text-sm font-bold ${isToday ? 'text-teal-600 dark:text-teal-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                  {isToday ? 'Today' : di === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long' })}
+                  {isToday ? 'Today' : ds === tomorrow ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long' })}
                 </div>
                 <div className="text-[11px] text-slate-400">{items.length === 0 ? 'Free day' : `${items.length} task${items.length === 1 ? '' : 's'}`}</div>
               </div>
@@ -2244,13 +2287,18 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
               </div>
             )}
             {items.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300/60 py-5 text-center text-xs text-slate-400 dark:border-slate-600/50">
-                Nothing planned
-              </div>
+              ds >= t0 && onAdd ? <WeekDayAdd ds={ds} empty categories={categories} onAdd={onAdd} /> : (
+                <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300/60 py-5 text-center text-xs text-slate-400 dark:border-slate-600/50">
+                  Nothing planned
+                </div>
+              )
             ) : (
-              <ul className="space-y-1.5">
-                {items.map((x) => renderItem(x, isToday))}
-              </ul>
+              <>
+                <ul className="space-y-1.5">
+                  {items.map((x) => renderItem(x, isToday))}
+                </ul>
+                {ds >= t0 && onAdd && <WeekDayAdd ds={ds} categories={categories} onAdd={onAdd} />}
+              </>
             )}
             {openCount > 0 && <div className="mt-2 text-right text-[10px] font-semibold text-slate-400">{openCount} open</div>}
           </div>
