@@ -2627,11 +2627,14 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
             className="w-full rounded-full border border-slate-200 bg-slate-50 py-3 pl-11 pr-5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
           />
         </div>
-        <button type="submit" title="Add task (Enter)"
-          className={`group flex shrink-0 items-center gap-2 rounded-full bg-sky-600 py-2.5 pl-5 pr-2.5 text-sm font-semibold text-white transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-sky-500 active:scale-[0.98] ${text.trim() ? 'shadow-lg shadow-sky-600/30' : 'opacity-70'}`}>
-          Add
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
-            <Plus size={15} strokeWidth={2} />
+        {/* Ready (something typed): the brand gradient with a glow, a sheen that sweeps across on hover, and a plus that turns. Empty: a muted version. */}
+        <button type="submit" title="Add task (Enter)" aria-disabled={!text.trim()}
+          className={`group relative flex shrink-0 items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-teal-500 to-sky-500 py-2.5 pl-5 pr-2.5 text-sm font-bold text-white transition-all duration-300 [transition-timing-function:var(--ease-out)] active:scale-95 ${
+            text.trim() ? 'shadow-lg shadow-sky-500/30 hover:-translate-y-px hover:shadow-xl hover:shadow-sky-500/40 hover:brightness-110' : 'opacity-55 saturate-75'}`}>
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+          <span className="relative">Add</span>
+          <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/20 transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover:scale-110 group-active:scale-95">
+            <Plus size={15} strokeWidth={2.4} className="transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover:rotate-90" />
           </span>
         </button>
       </div>
