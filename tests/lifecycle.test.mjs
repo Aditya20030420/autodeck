@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   markDone, markUndone, rescheduleTask, pendingCopy, completionDay, revivedTask, sanitizeImported, normalizeForToday, stampChanged,
-  tombstones, mergeTasks, mergeArchive, reminderItems, patchItems, withFreshAlarms, activityStats,
+  tombstones, mergeTasks, mergeArchive, reminderItems, patchItems, withFreshAlarms, activityStats, sortSubs,
 } from '../.test-build/TodoApp.mjs'
 import { alertTimes } from '../.test-build/androidReminders.mjs'
 
@@ -166,4 +166,10 @@ test('activity: completions per day for the last week, and the day streak', () =
   assert.equal(activityStats([done(-1), done(-2)]).streak, 2)      // nothing yet today: yesterday's run still counts
   assert.equal(activityStats([done(-2)]).streak, 0)                // a gap breaks it
   assert.equal(activityStats([]).streak, 0)
+})
+test('steps are kept in order of priority: High first, then Medium, then Low; a step with no priority follows its task', () => {
+  const steps = [{ id: 'a', priority: 'Low' }, { id: 'b' }, { id: 'c', priority: 'High' }, { id: 'd', priority: 'Medium' }, { id: 'e', priority: 'High' }]
+  assert.deepEqual(sortSubs(steps, 'Medium').map((s) => s.id), ['c', 'e', 'b', 'd', 'a'])   // equal priorities keep the order they were added in
+  assert.deepEqual(sortSubs(steps, 'High').map((s) => s.id), ['b', 'c', 'e', 'd', 'a'])     // "b" follows a High task
+  assert.deepEqual(steps.map((s) => s.id), ['a', 'b', 'c', 'd', 'e'])                        // the input list is not changed
 })

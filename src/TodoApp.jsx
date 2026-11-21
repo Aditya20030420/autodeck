@@ -311,6 +311,10 @@ const subLine = (st) => {
   const own = [st.priority, st.category, st.recur, st.reminder && st.reminder.time].filter(Boolean).join(', ')
   return `${st.done ? '[x]' : '[ ]'} ${st.text}${own ? ` (${own})` : ''}`
 }
+/** A step's priority: its own, or the task's when it has none. */
+const subRank = (st, taskPriority) => PRIORITY_RANK[st.priority || taskPriority] ?? 0
+/** Steps in order of priority, High first; steps of equal priority keep the order they were added in. */
+const sortSubs = (subs, taskPriority) => [...subs].sort((a, b) => subRank(b, taskPriority) - subRank(a, taskPriority))
 /** A new step with the options it was given (priority, category, repeat, reminder); anything left empty follows the task. */
 function newSubtask(d) {
   return applySubFields({ id: crypto.randomUUID(), text: d.text, done: false, day: todayStr() }, d)
@@ -1140,7 +1144,7 @@ export default function TodoApp() {
     const d = typeof data === 'string' ? { text: data } : data
     const v = (d.text || '').trim()
     if (!v) return
-    patch(id, (x) => ({ ...x, subtasks: [...(x.subtasks || []), newSubtask({ ...d, text: v })] }))
+    patch(id, (x) => ({ ...x, subtasks: sortSubs([...(x.subtasks || []), newSubtask({ ...d, text: v })], x.priority) }))
   }, [patch])
   // change a step's own priority / category / repeat / reminder (an empty value goes back to "same as the task")
   const editSubtask = useCallback((id, sid, fields) => patch(id, (x) => ({
@@ -2432,9 +2436,8 @@ function SubOptions({ value, onChange, categories, task, remDefaults, remKey = 0
   const cat = value.category || ''
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <ChipSelect label="Subtask priority" value={prio} onChange={(e) => onChange({ priority: e.target.value })}
+      <ChipSelect label="Subtask priority" value={prio || task.priority} onChange={(e) => onChange({ priority: e.target.value })}
         lead={<PriorityIcon p={prio || task.priority} />}>
-        <option value="" icon={<PriorityIcon p={task.priority} />}>Same priority</option>
         {PRIORITIES.map((p) => <option key={p} value={p} icon={<PriorityIcon p={p} />}>{p} priority</option>)}
       </ChipSelect>
       <ChipSelect label="Subtask category" value={cat} onChange={(e) => onChange({ category: e.target.value })}
@@ -2451,12 +2454,13 @@ function SubOptions({ value, onChange, categories, task, remDefaults, remKey = 0
   )
 }
 /** What a step has of its own, as small badges (nothing is shown for a step that just follows its task). */
-function SubChips({ st, categories, nowTick = Date.now() }) {
+function SubChips({ st, categories, nowTick = Date.now(), taskPriority }) {
   const late = st.reminder && !st.done && overdueMins(st.reminder, nowTick) > 0
-  if (!st.priority && !st.category && !st.recur && !st.reminder) return null
+  const own = st.priority && st.priority !== taskPriority ? st.priority : null
+  if (!own && !st.category && !st.recur && !st.reminder) return null
   return (
     <span className="flex flex-wrap items-center gap-1">
-      {st.priority && <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold ${PRIORITY_BADGE[st.priority]}`}>{st.priority}</span>}
+      {own && <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold ${PRIORITY_BADGE[own]}`}>{own}</span>}
       {st.category && <span className="rounded-full px-1.5 py-px text-[10px] font-semibold" style={catBadgeStyle(categories, st.category)}>{st.category}</span>}
       {st.recur && <span className="flex items-center gap-0.5 rounded-full bg-teal-500/15 px-1.5 py-px text-[10px] font-bold text-teal-700 dark:text-teal-300"><RotateCw size={9} /> {RECUR_LABEL[st.recur]}</span>}
       {st.reminder && (
@@ -2722,7 +2726,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
       category: p.category || category,
       reminder,
       recur: recur || null,
-      subtasks: pending.map((st) => newSubtask(st)),
+      subtasks: sortSubs(pending, p.priority || priority).map((st) => newSubtask(st)),
     })
     setText(''); setRem(null); setRemKey((k) => k + 1); setRecur(''); setSubs([]); setSubDraft(''); setSubOpts({}); setSubOptsKey((k) => k + 1); setEditSub(null); setSubsOpen(false)
     if (reminder) onFirstReminder()  // ask for desktop-notification permission (optional bonus)
@@ -2798,7 +2802,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           </div>
           {subs.length > 0 && (
             <ul className="mb-2 space-y-1" aria-label="Subtasks to add">
-              {subs.map((st, i) => (
+              {subs.map((st, i) => ({ st, i })).sort((a, b) => subRank(b.st, priority) - subRank(a.st, priority)).map(({ st, i }) => (
                 <li key={i} className="animate-fade-in rounded-lg px-1 py-0.5 text-sm transition-colors hover:bg-slate-500/[0.06]">
                   <div className="flex items-center gap-2">
                     <span className="h-4 w-4 shrink-0 rounded border border-slate-300 dark:border-slate-600" aria-hidden="true" />
@@ -2808,7 +2812,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
                     <button type="button" onClick={() => { setSubs((s) => s.filter((_, j) => j !== i)); setEditSub(null) }} aria-label={`Remove subtask ${st.text}`}
                       className="shrink-0 rounded p-0.5 text-slate-300 transition hover:text-rose-500"><X size={13} /></button>
                   </div>
-                  <div className="pl-6"><SubChips st={st} categories={categories} /></div>
+                  <div className="pl-6"><SubChips st={st} categories={categories} taskPriority={priority} /></div>
                   {editSub === i && (
                     <div className="mb-1 mt-1.5 pl-6">
                       <SubOptions value={st} onChange={(f) => editListed(i, f)} categories={categories} task={{ priority, category }} remDefaults={remDefaults} remKey={`l${i}`} />
@@ -2905,7 +2909,7 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
   const [remDraft, setRemDraft] = useState(task.reminder || null)
   useEffect(() => { if (editing) setDraft(task.text) }, [editing, task.text])
 
-  const subs = task.subtasks || []
+  const subs = sortSubs(task.subtasks || [], task.priority)
   const doneSubs = subs.filter((s) => s.done).length
   const overdue = task.reminder && !task.done && overdueMins(task.reminder, nowTick) > 0
 
@@ -3049,7 +3053,7 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
                   <X size={13} />
                 </button>
               </div>
-              <div className="pl-6"><SubChips st={s} categories={categories} nowTick={nowTick} /></div>
+              <div className="pl-6"><SubChips st={s} categories={categories} nowTick={nowTick} taskPriority={task.priority} /></div>
               {editSubId === s.id && (
                 <div className="mb-1 mt-1.5 pl-6">
                   <SubOptions value={s} onChange={(f) => onEditSubtask(task.id, s.id, f)} categories={categories} task={task} remKey={`e${s.id}`} />
@@ -3652,5 +3656,5 @@ function EmptyState({ icon: Icon, title, copy }) {
 // the app's pure logic, exported so the automated tests (npm test) can check it without a browser
 export {
   sanitizeImported, revivedTask, reminderItems, patchItems, normalizeForToday, parseQuickAdd, migrateReminder, nextAlertAt, nextOccurrence, reminderTrigger,
-  markDone, markUndone, rescheduleTask, activityStats, pendingCopy, completionDay, stampChanged, tombstones, mergeTasks, mergeArchive, withFreshAlarms,
+  markDone, markUndone, rescheduleTask, activityStats, sortSubs, pendingCopy, completionDay, stampChanged, tombstones, mergeTasks, mergeArchive, withFreshAlarms,
 }
