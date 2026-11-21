@@ -164,6 +164,21 @@ const reviveArchive = (v) => (Array.isArray(v)
 const dayMs = (d) => new Date(`${d}T12:00`).getTime()
 /** The day a task counts as done on: the day it was checked off (older saves without it use the task's own day). */
 const completionDay = (x) => (x.completedAt ? dateStr(new Date(x.completedAt)) : x.day)
+/** What was finished recently: completions per day for the last 7 days (today last), their total, and the streak of
+    consecutive days (ending today, or yesterday if nothing is done yet today) with at least one completion. */
+function activityStats(tasks, now = new Date()) {
+  const counts = new Map()
+  for (const t of tasks) if (t.done) { const d = completionDay(t); if (d) counts.set(d, (counts.get(d) || 0) + 1) }
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now); d.setDate(d.getDate() - (6 - i))
+    return { ds: dateStr(d), label: d.toLocaleDateString(undefined, { weekday: 'short' }), count: counts.get(dateStr(d)) || 0, today: i === 6 }
+  })
+  let streak = 0
+  const d = new Date(now)
+  if (!counts.get(dateStr(d))) d.setDate(d.getDate() - 1)
+  while (counts.get(dateStr(d))) { streak++; d.setDate(d.getDate() - 1) }
+  return { days, streak, week: days.reduce((a, x) => a + x.count, 0) }
+}
 const markDone = (x, now = Date.now()) => ({ ...x, done: true, completedAt: now })
 /** Alarms of a task that comes back as a fresh pending task: a reminder that has passed is dropped, a repeating one moves to today. */
 function withFreshAlarms(task) {
@@ -958,6 +973,7 @@ export default function TodoApp() {
     return c
   }, [todays])
   // Next upcoming reminder (across all pending tasks, any date) for the header chip.
+  const activity = useMemo(() => activityStats(tasks), [tasks, today])
   const nextReminder = useMemo(() => {
     const up = items
       .filter((x) => !x.done && x.reminder && reminderEventTime(x.reminder).getTime() >= Date.now())
@@ -1417,7 +1433,8 @@ export default function TodoApp() {
           <WeekView tasks={tasks} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
         ) : (
         <>
-        <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} />
+        <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate}
+          pending={pendingToday.length} high={highPending} overdue={dueReminders.length} next={nextReminder} activity={activity} />
 
         <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} remDefaults={remDefaults} categories={categories} />
 
@@ -2253,7 +2270,7 @@ function WeekView({ tasks, onView, onToggle, onReschedule, onDelete }) {
 
 /* --------------------------------- Progress -------------------------------- */
 /** @param {{pct:number, done:number, total:number, celebrate:boolean}} props */
-function ProgressDashboard({ pct, done, total, celebrate }) {
+function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0, overdue = 0, next = null, activity = null }) {
   const R = 30, C = 2 * Math.PI * R
   const msg = total === 0 ? 'Add your first task to get going.'
     : celebrate ? 'Everything done. You crushed today.'
@@ -2261,40 +2278,89 @@ function ProgressDashboard({ pct, done, total, celebrate }) {
     : pct < 50 ? 'Good start. Keep the momentum.'
     : pct < 100 ? 'More than halfway there!'
     : 'All done. Beautiful.'
+  const peak = Math.max(1, ...(activity?.days || []).map((d) => d.count))
+  const tiles = [
+    { k: 'To do', v: pending, tone: 'bg-sky-500/10 text-sky-600 dark:text-sky-300', icon: <ListTodo size={15} /> },
+    { k: 'High priority', v: high, tone: high ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400', icon: <PriorityIcon p="High" size={15} /> },
+    { k: 'Overdue', v: overdue, tone: overdue ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-lime-500/15 text-lime-700 dark:text-lime-300', icon: overdue ? <TriangleAlert size={15} /> : <CheckCircle2 size={15} /> },
+    { k: 'Day streak', v: activity?.streak || 0, tone: activity?.streak ? 'bg-orange-500/15 text-orange-600 dark:text-orange-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400', icon: <Flame size={15} /> },
+  ]
 
   return (
     // Double-bezel: outer shell (tray) + inner core (glass plate) with concentric radii.
     <div className={`animate-fade-in mb-6 rounded-[2rem] bg-white/20 p-1.5 ring-1 ring-white/50 transition dark:bg-white/[0.04] dark:ring-white/15 ${celebrate ? 'ring-2 ring-sky-500/50' : ''}`}>
-      <div className="glass bezel-core relative flex items-center gap-5 overflow-hidden rounded-[calc(2rem-0.375rem)] p-6">
+      <div className="glass bezel-core relative overflow-hidden rounded-[calc(2rem-0.375rem)] p-6">
       {/* diagonal light sheen */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/25 via-transparent to-transparent dark:from-white/[0.08]" />
-      <div className="relative shrink-0">
-        <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
-          <defs>
-            <linearGradient id="prog-grad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#0EA5E9" />
-              <stop offset="100%" stopColor="#2DD4BF" />
-            </linearGradient>
-          </defs>
-          <circle cx="40" cy="40" r={R} strokeWidth="8" className="fill-none stroke-slate-200/70 dark:stroke-white/10" />
-          <circle cx="40" cy="40" r={R} strokeWidth="8" strokeLinecap="round" stroke="url(#prog-grad)"
-            className={`fill-none [transition:stroke-dashoffset_.7s_cubic-bezier(0.32,0.72,0,1)] ${pct === 100 ? 'glow-pulse' : ''}`}
-            strokeDasharray={C} strokeDashoffset={C - (pct / 100) * C} />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          {celebrate
-            ? <PartyPopper size={24} className="animate-wiggle text-lime-500" />
-            : <span className="bg-gradient-to-br from-sky-500 to-teal-400 bg-clip-text text-lg font-extrabold tabular-nums text-transparent">{pct}<span className="text-xs">%</span></span>}
+
+      <div className="relative flex flex-wrap items-center gap-5">
+        <div className="relative shrink-0">
+          <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+            <defs>
+              <linearGradient id="prog-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#0EA5E9" />
+                <stop offset="100%" stopColor="#2DD4BF" />
+              </linearGradient>
+            </defs>
+            <circle cx="40" cy="40" r={R} strokeWidth="8" className="fill-none stroke-slate-200/70 dark:stroke-white/10" />
+            <circle cx="40" cy="40" r={R} strokeWidth="8" strokeLinecap="round" stroke="url(#prog-grad)"
+              className={`fill-none [transition:stroke-dashoffset_.7s_cubic-bezier(0.32,0.72,0,1)] ${pct === 100 ? 'glow-pulse' : ''}`}
+              strokeDasharray={C} strokeDashoffset={C - (pct / 100) * C} />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            {celebrate
+              ? <PartyPopper size={24} className="animate-wiggle text-lime-500" />
+              : <span className="bg-gradient-to-br from-sky-500 to-teal-400 bg-clip-text text-lg font-extrabold tabular-nums text-transparent">{pct}<span className="text-xs">%</span></span>}
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold">
+            <span className="text-slate-900 dark:text-white">{done}</span>
+            <span className="text-slate-400"> / {total} </span>
+            <span className="text-slate-500 dark:text-slate-400">done today</span>
+          </p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{msg}</p>
+          {next && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <Bell size={12} className="text-sky-500" /> Next reminder {next}
+            </p>
+          )}
         </div>
       </div>
-      <div className="relative min-w-0">
-        <p className="text-[15px] font-semibold">
-          <span className="text-slate-900 dark:text-white">{done}</span>
-          <span className="text-slate-400"> / {total} </span>
-          <span className="text-slate-500 dark:text-slate-400">done today</span>
-        </p>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{msg}</p>
+
+      {/* the day at a glance */}
+      <div className="relative mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {tiles.map((t, i) => (
+          <div key={t.k} style={{ animationDelay: `${i * 50}ms` }} className={`animate-fade-up flex items-center gap-2.5 rounded-2xl px-3.5 py-3 ${t.tone}`}>
+            <span className="shrink-0 opacity-90">{t.icon}</span>
+            <div className="min-w-0 leading-none">
+              <div className="text-xl font-extrabold tabular-nums">{t.v}</div>
+              <div className="mt-1 truncate text-[10px] font-bold uppercase tracking-wider opacity-75">{t.k}</div>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* the last seven days */}
+      {activity && (
+        <div className="relative mt-5 rounded-2xl bg-slate-500/[0.07] p-4 dark:bg-white/[0.05]">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"><CalendarDays size={13} className="text-teal-500" /> Last 7 days</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-200">{activity.week}</span> completed</span>
+          </div>
+          <div className="flex h-20 items-end gap-2" role="img" aria-label={`Tasks completed per day: ${activity.days.map((d) => `${d.label} ${d.count}`).join(', ')}`}>
+            {activity.days.map((d, i) => (
+              <div key={d.ds} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+                <span className={`text-[10px] font-bold tabular-nums ${d.count ? 'text-slate-600 dark:text-slate-300' : 'text-transparent'}`}>{d.count || 0}</span>
+                <div style={{ height: `${d.count ? Math.max(14, (d.count / peak) * 100) : 6}%`, animationDelay: `${i * 40}ms` }}
+                  className={`animate-fade-up w-full max-w-[2.5rem] rounded-t-lg rounded-b-sm transition-[height] duration-500 ${
+                    d.today ? 'bg-gradient-to-t from-teal-500 to-sky-500 shadow-[0_0_12px_rgba(20,184,166,0.35)]' : d.count ? 'bg-teal-500/45' : 'bg-slate-500/15'}`} />
+                <span className={`text-[10px] font-semibold ${d.today ? 'text-teal-600 dark:text-teal-300' : 'text-slate-400'}`}>{d.today ? 'Today' : d.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )
@@ -3532,5 +3598,5 @@ function EmptyState({ icon: Icon, title, copy }) {
 // the app's pure logic, exported so the automated tests (npm test) can check it without a browser
 export {
   sanitizeImported, revivedTask, reminderItems, patchItems, normalizeForToday, parseQuickAdd, migrateReminder, nextAlertAt, nextOccurrence, reminderTrigger,
-  markDone, markUndone, rescheduleTask, pendingCopy, completionDay, stampChanged, tombstones, mergeTasks, mergeArchive, withFreshAlarms,
+  markDone, markUndone, rescheduleTask, activityStats, pendingCopy, completionDay, stampChanged, tombstones, mergeTasks, mergeArchive, withFreshAlarms,
 }

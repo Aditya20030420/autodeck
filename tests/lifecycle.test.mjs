@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   markDone, markUndone, rescheduleTask, pendingCopy, completionDay, revivedTask, sanitizeImported, normalizeForToday, stampChanged,
-  tombstones, mergeTasks, mergeArchive, reminderItems, patchItems, withFreshAlarms,
+  tombstones, mergeTasks, mergeArchive, reminderItems, patchItems, withFreshAlarms, activityStats,
 } from '../.test-build/TodoApp.mjs'
 import { alertTimes } from '../.test-build/androidReminders.mjs'
 
@@ -155,4 +155,15 @@ test('Android: a completed repeating task keeps the coming days\' alarms until i
 test('alarms of a task that comes back fresh', () => {
   const t = task({ reminder: rem({ time: hm(-30), lastAlert: 4, snoozeUntil: 9 }), recur: 'daily' })
   assert.equal(withFreshAlarms(t).reminder.lastAlert, null); assert.equal(withFreshAlarms({ ...t, recur: null }).reminder, null)
+})
+test('activity: completions per day for the last week, and the day streak', () => {
+  const at = (off) => { const d = new Date(); d.setDate(d.getDate() + off); d.setHours(12, 0, 0, 0); return d.getTime() }
+  const done = (off) => task({ done: true, completedAt: at(off) })
+  const a = activityStats([done(0), done(0), done(-1), done(-2), done(-4), done(-30), task()])
+  assert.equal(a.days.length, 7); assert.equal(a.days[6].today, true)
+  assert.deepEqual(a.days.map((d) => d.count), [0, 0, 1, 0, 1, 1, 2])
+  assert.equal(a.week, 5); assert.equal(a.streak, 3)               // today, yesterday and the day before
+  assert.equal(activityStats([done(-1), done(-2)]).streak, 2)      // nothing yet today: yesterday's run still counts
+  assert.equal(activityStats([done(-2)]).streak, 0)                // a gap breaks it
+  assert.equal(activityStats([]).streak, 0)
 })
