@@ -1793,9 +1793,9 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
 
       {/* Goals */}
       <div className="glass animate-fade-in rounded-[1.5rem] p-5">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
           <Target size={15} className="text-teal-500" /> {isToday ? "Today's goals" : 'Goals'}
-        </h3>
+        </h2>
         {isToday && (
           <div className="mb-3 flex gap-2">
             <input value={newGoal} onChange={(e) => setNewGoal(e.target.value)}
@@ -1841,7 +1841,7 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
         {[['Challenges / Blockers', blockers, 'blockers', "What's getting in the way…", TriangleAlert, 'text-amber-500'],
           ['Additional Notes', notes, 'notes', 'Anything else worth sharing…', StickyNote, 'text-sky-500']].map(([label, val, key, ph, Icon, tone]) => (
           <div key={key} className="glass animate-fade-in rounded-[1.5rem] p-5">
-            <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200"><Icon size={15} className={tone} /> {label}</h3>
+            <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200"><Icon size={15} className={tone} /> {label}</h2>
             <textarea value={val} onChange={(e) => patchReport({ [key]: e.target.value })} rows={4} placeholder={ph}
               className="glass-sm w-full resize-y rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-500/30" />
           </div>
@@ -1876,7 +1876,7 @@ function DailyReport({ tasks, onAddGoal, onToggleGoal }) {
       {/* History */}
       {history.length > 0 && (
         <div className="glass rounded-[1.5rem] p-5">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200"><HistoryIcon size={15} className="text-teal-500" /> Previous reports</h3>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200"><HistoryIcon size={15} className="text-teal-500" /> Previous reports</h2>
           <ul className="space-y-2">
             {history.map(([d, r]) => {
               const g = r.snapshot ?? []
@@ -2795,7 +2795,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           <span>Quick add:</span>
           {[...categories.filter((c) => /^\w+$/.test(c.name)).slice(0, 2).map((c) => `#${c.name.toLowerCase()}`), '!high', 'at 5pm', 'tomorrow'].map((tok) => (
             <button key={tok} type="button" onClick={() => insertToken(tok)}
-              className={`rounded-full px-2.5 py-0.5 font-semibold transition hover:-translate-y-px hover:brightness-110 active:scale-95 ${
+              className={`rounded-full px-2.5 py-1 font-semibold transition hover:-translate-y-px hover:brightness-110 active:scale-95 ${
                 tok[0] === '#' ? 'bg-teal-500/12 text-teal-600 dark:text-teal-300' : tok === '!high' ? 'bg-rose-500/12 text-rose-600 dark:text-rose-300'
                 : tok === 'tomorrow' ? 'bg-sky-500/12 text-sky-600 dark:text-sky-300' : 'bg-lime-500/15 text-lime-700 dark:text-lime-300'}`}>{tok}</button>
           ))}
@@ -2880,7 +2880,7 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
         {/* drag handle (pending list only) */}
         {handleProps && (
           <button {...handleProps} aria-label="Drag to reorder"
-            className="shrink-0 cursor-grab touch-none rounded p-0.5 text-slate-300 transition hover:text-slate-500 active:cursor-grabbing dark:text-slate-600 dark:hover:text-slate-400">
+            className="relative shrink-0 cursor-grab touch-none rounded p-0.5 text-slate-300 transition after:absolute after:-inset-1 after:content-[''] hover:text-slate-500 active:cursor-grabbing dark:text-slate-600 dark:hover:text-slate-400">
             <GripVertical size={16} />
           </button>
         )}
@@ -3004,7 +3004,7 @@ const TaskCard = memo(function TaskCard({ task, index = 0, editing, highlight, n
             </div>
           ))}
           <form onSubmit={addSub} className="space-y-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-lg px-1 transition focus-within:ring-2 focus-within:ring-sky-500/40">
               <Plus size={13} className="shrink-0 text-slate-400" />
               <input value={subDraft} onChange={(e) => setSubDraft(e.target.value)}
                 placeholder="Add a subtask…" maxLength={500}
@@ -3125,7 +3125,7 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, o
                   className="rounded-full bg-lime-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-lime-600 active:scale-95">Done</button>
                 <Select label="Snooze" title="Snooze" value=""
                   onChange={(e) => { if (e.target.value) { onSnooze(task.id, +e.target.value); e.target.value = '' } }}
-                  className="rounded-full bg-slate-500/10 px-2 py-1 text-xs font-semibold text-slate-600 outline-none dark:text-slate-300">
+                  className="rounded-full bg-slate-500/10 px-2 py-1 text-xs font-semibold text-slate-600 outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 dark:text-slate-300">
                   <option value="" disabled>Snooze</option>
                   {SNOOZE_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
                 </Select>
@@ -3212,7 +3212,7 @@ function UpcomingReminders({ items, nowTick, onView, onCancel }) {
                     </td>
                     <td className="py-2 text-right">
                       <button onClick={() => onCancel(task.id)} title="Cancel reminder"
-                        className="rounded-full p-1 text-slate-400 transition hover:text-rose-500"><X size={14} /></button>
+                        className="rounded-full p-1.5 text-slate-400 transition hover:text-rose-500"><X size={14} /></button>
                     </td>
                   </tr>
                 )
