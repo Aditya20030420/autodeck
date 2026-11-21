@@ -8,7 +8,7 @@ import {
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
   Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles,
-  ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon,
+  ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon, SlidersHorizontal, Palette, Info,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -1556,7 +1556,7 @@ function ClampText({ text, className = '', innerClass = '', onDoubleClick }) {
   }, [text, open])
   return (
     <span className={`flex-1 ${className}`} onDoubleClick={onDoubleClick}>
-      <span ref={ref} className={`break-words ${open ? 'block' : 'line-clamp-2'} ${innerClass}`}>{text}</span>
+      <span ref={ref} className={`break-words ${open ? 'block' : 'line-clamp-2'}`}><span className={innerClass}>{text}</span></span>
       {(cut || open) && (
         <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o) }}
           aria-expanded={open}
@@ -3145,11 +3145,24 @@ function UpcomingReminders({ items, nowTick, onView, onCancel }) {
 function Switch({ checked, onChange, label }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-300 active:scale-95 ${checked ? 'bg-gradient-to-r from-teal-500 to-sky-500 shadow-[0_0_10px_rgba(20,184,166,0.35)]' : 'bg-slate-300 dark:bg-slate-600'}`}>
+      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 [transition-timing-function:var(--spring)] ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
     </button>
   )
 }
+
+/** A titled group of settings: a small heading, then one soft panel whose rows are separated by hairlines. */
+function SettingsSection({ icon: Icon, title, delay = 0, children }) {
+  return (
+    <section className="animate-fade-up" style={{ animationDelay: `${delay}ms` }}>
+      <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <Icon size={13} className="text-teal-500" /> {title}
+      </h3>
+      <div className="divide-y divide-black/5 rounded-2xl bg-slate-500/[0.07] dark:divide-white/10 dark:bg-white/[0.05]">{children}</div>
+    </section>
+  )
+}
+const ROW = 'flex items-center justify-between gap-3 px-4 py-3'
 
 function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, notify, muted, onRequestNotify }) {
   const [newCat, setNewCat] = useState('')
@@ -3199,123 +3212,121 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
       <div role="dialog" aria-label="Settings"
         className="glass animate-fade-up relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-[1.5rem] shadow-soft">
         <div className={`flex shrink-0 items-center gap-2 px-6 pb-3 pt-6 transition-shadow duration-200 ${edge.top ? 'shadow-[0_8px_14px_-12px_rgba(0,0,0,0.5)]' : ''}`}>
-          <Settings size={18} className="text-teal-500" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-sky-500 text-white shadow-sm"><Settings size={18} /></span>
           <div className="leading-tight">
-            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Reminder & notification settings</h2>
-            <p className="text-xs font-semibold text-slate-400">AutoDeck v{__APP_VERSION__}</p>
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Settings</h2>
+            <p className="text-xs font-semibold text-slate-400">Reminders, sound and categories · v{__APP_VERSION__}</p>
           </div>
           <button onClick={onClose} aria-label="Close settings" className="ml-auto rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-700 dark:hover:bg-white/10"><X size={18} /></button>
         </div>
 
         <div ref={scroller} onScroll={measure} data-edge-top={edge.top} data-edge-bottom={edge.bottom}
           className="fancy-scroll scroll-fade min-h-0 flex-1 overflow-y-auto pb-6 pl-6 pr-4 pt-1 text-sm">
-        <div className="space-y-4">
-          {/* Desktop notifications */}
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="font-semibold text-slate-700 dark:text-slate-200">Desktop notifications</div>
-              <div className="text-xs text-slate-400">Currently: {notifState}</div>
-            </div>
-            <button onClick={onRequestNotify}
-              className="rounded-full bg-slate-500/10 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 dark:text-slate-200">
-              {!notify ? 'Enable' : muted ? 'Unmute' : 'Mute'}
-            </button>
-          </div>
-
-          {/* Keep running when closed (desktop app) */}
-          {bg !== null && (
-            <div className="flex items-center justify-between gap-3">
+        <div className="space-y-5">
+          {/* Notifications */}
+          <SettingsSection icon={Bell} title="Notifications">
+            <div className={ROW}>
               <div>
-                <div className="font-semibold text-slate-700 dark:text-slate-200">Reminders when closed</div>
-                <div className="text-xs text-slate-400">Closing the window keeps AutoDeck in the tray, and it starts with Windows, so reminders still arrive. Quit from the tray icon.</div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Desktop notifications</div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
+                  <span className={`h-1.5 w-1.5 rounded-full ${notify ? (muted ? 'bg-amber-400' : 'bg-emerald-500') : 'bg-slate-400'}`} />Currently: {notifState}
+                </div>
               </div>
-              <Switch checked={bg} onChange={changeBg} label="Reminders when closed" />
+              <button onClick={onRequestNotify}
+                className="rounded-full bg-teal-500/15 px-3.5 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-500/25 active:scale-95 dark:text-teal-300">
+                {!notify ? 'Enable' : muted ? 'Unmute' : 'Mute'}
+              </button>
             </div>
-          )}
+            {/* Keep running when closed (desktop app) */}
+            {bg !== null && (
+              <div className={ROW}>
+                <div>
+                  <div className="font-semibold text-slate-700 dark:text-slate-200">Reminders when closed</div>
+                  <div className="mt-0.5 text-xs text-slate-400">Closing the window keeps AutoDeck in the tray, and it starts with Windows, so reminders still arrive. Quit from the tray icon.</div>
+                </div>
+                <Switch checked={bg} onChange={changeBg} label="Reminders when closed" />
+              </div>
+            )}
+          </SettingsSection>
 
-          {/* Sound on/off */}
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="font-semibold text-slate-700 dark:text-slate-200">Sound effects</div>
-              <div className="text-xs text-slate-400">Alarms and UI chimes</div>
+          {/* Sound */}
+          <SettingsSection icon={Volume2} title="Sound" delay={50}>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Sound effects</div>
+                <div className="mt-0.5 text-xs text-slate-400">Alarms and UI chimes</div>
+              </div>
+              <Switch checked={soundOn} onChange={setSoundOn} label="Sound effects" />
             </div>
-            <Switch checked={soundOn} onChange={setSoundOn} label="Sound effects" />
-          </div>
-
-          {/* Volume */}
-          <div className={soundOn ? '' : 'pointer-events-none opacity-40'}>
-            <div className="mb-1.5 flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
-              <Volume2 size={15} /> Volume
-              <span className="ml-auto text-xs font-normal text-slate-400">{Math.round(volume * 100)}%</span>
+            <div className={`px-4 py-3 transition-opacity ${soundOn ? '' : 'pointer-events-none opacity-40'}`}>
+              <div className="mb-2 flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
+                <Volume2 size={15} /> Volume
+                <span className="ml-auto rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-500 dark:text-slate-300">{Math.round(volume * 100)}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="range" min="0" max="100" value={Math.round(volume * 100)}
+                  onChange={(e) => setVolume(+e.target.value / 100)} style={{ '--p': `${Math.round(volume * 100)}%` }}
+                  className="ad-range w-full" aria-label="Volume" />
+                <button onClick={() => playSfx('reminder')}
+                  className="shrink-0 rounded-full bg-slate-500/10 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 active:scale-95 dark:text-slate-200">Test</button>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <input type="range" min="0" max="100" value={Math.round(volume * 100)}
-                onChange={(e) => setVolume(+e.target.value / 100)}
-                className="w-full accent-teal-500" aria-label="Volume" />
-              <button onClick={() => playSfx('reminder')}
-                className="shrink-0 rounded-full bg-slate-500/10 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 dark:text-slate-200">Test</button>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Louder alarm for high priority</div>
+                <div className="mt-0.5 text-xs text-slate-400">Off = high priority uses the standard chime</div>
+              </div>
+              <Switch checked={hpAlarm} onChange={setHpAlarm} label="Louder alarm for high priority" />
             </div>
-          </div>
-
-          {/* High-priority alarm */}
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="font-semibold text-slate-700 dark:text-slate-200">Louder alarm for high priority</div>
-              <div className="text-xs text-slate-400">Off = high priority uses the standard chime</div>
-            </div>
-            <Switch checked={hpAlarm} onChange={setHpAlarm} label="Louder alarm for high priority" />
-          </div>
+          </SettingsSection>
 
           {/* Default reminder times */}
-          <div className="border-t border-black/5 pt-4 dark:border-white/10">
-            <div className="mb-2 font-semibold text-slate-700 dark:text-slate-200">Defaults for new reminders</div>
-            <div className="flex flex-wrap gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                Lead
-                <Select label="Default lead time" className={sel} value={remDefaults.lead}
-                  onChange={(e) => setRemDefaults({ ...remDefaults, lead: +e.target.value })}>
-                  {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </Select>
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                Repeat
-                <Select label="Default repeat" className={sel} value={remDefaults.repeat}
-                  onChange={(e) => setRemDefaults({ ...remDefaults, repeat: +e.target.value })}>
-                  {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </Select>
-              </label>
+          <SettingsSection icon={SlidersHorizontal} title="Defaults for new reminders" delay={100}>
+            <div className="px-4 py-3">
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  Lead
+                  <Select label="Default lead time" className={sel} value={remDefaults.lead}
+                    onChange={(e) => setRemDefaults({ ...remDefaults, lead: +e.target.value })}>
+                    {LEAD_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                  </Select>
+                </label>
+                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  Repeat
+                  <Select label="Default repeat" className={sel} value={remDefaults.repeat}
+                    onChange={(e) => setRemDefaults({ ...remDefaults, repeat: +e.target.value })}>
+                    {REPEAT_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+                  </Select>
+                </label>
+              </div>
+              <p className="mt-2 text-xs text-slate-400">Pre-fills the reminder fields when you add a task.</p>
             </div>
-            <p className="mt-2 text-xs text-slate-400">Pre-fills the reminder fields when you add a task.</p>
-          </div>
+          </SettingsSection>
 
           {/* Categories */}
-          <div className="border-t border-black/5 pt-4 dark:border-white/10">
-            <div className="mb-2 font-semibold text-slate-700 dark:text-slate-200">Categories</div>
-            <ul className="mb-2 space-y-1.5">
-              {categories.map((c) => (
-                <li key={c.name} className="flex items-center gap-2">
-                  <input type="color" value={c.color} onChange={(e) => recolor(c.name, e.target.value)}
-                    aria-label={`Colour for ${c.name}`} title="Change colour"
-                    className="h-6 w-6 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
-                  <span className="flex-1 text-sm text-slate-700 dark:text-slate-200">{c.name}</span>
-                  <button onClick={() => removeCat(c.name)} aria-label={`Delete ${c.name}`} title="Delete category"
-                    disabled={categories.length <= 1}
-                    className="rounded-full p-1 text-slate-400 transition hover:text-rose-500 disabled:opacity-30"><X size={14} /></button>
-                </li>
-              ))}
-            </ul>
-            <div className="flex items-center gap-2">
-              <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} aria-label="New category colour"
-                className="h-7 w-7 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0" />
+          <SettingsSection icon={Palette} title="Categories" delay={150}>
+            {categories.map((c) => (
+              <div key={c.name} className="flex items-center gap-3 px-4 py-2.5">
+                <input type="color" value={c.color} onChange={(e) => recolor(c.name, e.target.value)}
+                  aria-label={`Colour for ${c.name}`} title="Change colour" className="ad-color" />
+                <span className="flex-1 text-sm text-slate-700 dark:text-slate-200">{c.name}</span>
+                <button onClick={() => removeCat(c.name)} aria-label={`Delete ${c.name}`} title="Delete category"
+                  disabled={categories.length <= 1}
+                  className="rounded-full p-1 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-30"><X size={14} /></button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 px-4 py-3">
+              <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} aria-label="New category colour" className="ad-color" />
               <input value={newCat} onChange={(e) => setNewCat(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') addCat() }} placeholder="New category…"
-                className={`${sel} flex-1`} />
-              <button onClick={addCat} className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">Add</button>
+                className={`${sel} min-w-0 flex-1`} />
+              <button onClick={addCat} className="rounded-full bg-teal-500 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">Add</button>
             </div>
-          </div>
+          </SettingsSection>
 
-          <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10">
-            Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.
+          <p className="flex items-start gap-2 px-1 text-xs text-slate-400">
+            <Info size={14} className="mt-px shrink-0 text-teal-500" />
+            <span>Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.</span>
           </p>
         </div>
         </div>
