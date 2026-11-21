@@ -1434,7 +1434,7 @@ export default function TodoApp() {
           <ArchiveView archive={archive} categories={categories} keepDays={archiveKeep} setKeepDays={setArchiveKeep}
             onRestore={restoreArchived} onDelete={deleteArchived} />
         ) : view === 'week' ? (
-          <WeekView tasks={tasks} categories={categories} onAdd={addTask} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
+          <WeekView tasks={tasks} categories={categories} onAdd={addTask} remDefaults={remDefaults} notifyOn={notify && !muted} onFirstReminder={requestNotify} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
         ) : (
         <>
         <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate}
@@ -2194,17 +2194,10 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
 }
 
 /* ---------------------------------- Week ----------------------------------- */
-/** Adds a task to one day of the week: a button that turns into a box. The same shortcuts as the main form work (#work !high at 5pm). */
-function WeekDayAdd({ ds, empty, categories, onAdd }) {
+/** Adds a task to one day of the week: a button that opens the same form as the Tasks tab (priority, category, repeat, steps,
+    reminder), made for that day. */
+function WeekDayAdd({ ds, empty, categories, onAdd, remDefaults, notifyOn, onFirstReminder }) {
   const [open, setOpen] = useState(false)
-  const [text, setText] = useState('')
-  const submit = () => {
-    const p = parseQuickAdd(text, categories)
-    if (!p.text) return
-    onAdd({ text: p.text, priority: p.priority || 'Medium', category: p.category || categories[0]?.name || 'Work', day: ds,
-      reminder: p.reminder ? { date: ds, time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null })
-    setText('')
-  }
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} aria-label={`Add a task on ${ds}`}
@@ -2216,18 +2209,14 @@ function WeekDayAdd({ ds, empty, categories, onAdd }) {
     )
   }
   return (
-    <div className={`animate-fade-in ${empty ? 'flex-1' : 'mt-2'}`}>
-      <input autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} aria-label={`New task for ${ds}`} placeholder="Task… (Enter)"
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } else if (e.key === 'Escape') { e.stopPropagation(); setText(''); setOpen(false) } }}
-        onBlur={() => { if (!text.trim()) setOpen(false) }}
-        className="w-full rounded-lg border border-teal-500/50 bg-slate-500/[0.06] px-2.5 py-1.5 text-xs outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/30" />
-    </div>
+    <AddTaskForm compact day={ds} categories={categories} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder}
+      onAdd={(d) => { onAdd({ ...d, day: ds }); setOpen(false) }} onClose={() => setOpen(false)} />
   )
 }
 
 /** 7-day overview (today + 6), with arrows to look at other weeks. Tasks are grouped by their scheduled day, so
     postponed and future recurring tasks show up on the right day, and a day can take a new task right in its card. */
-function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, onView, onToggle, onReschedule, onDelete }) {
+function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, remDefaults, notifyOn, onFirstReminder, onView, onToggle, onReschedule, onDelete }) {
   const [openId, setOpenId] = useState(null)  // task whose action row is expanded
   const [offset, setOffset] = useState(0)     // weeks away from the current one
   const t0 = todayStr()
@@ -2335,7 +2324,7 @@ function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, onView, onTog
               </div>
             )}
             {items.length === 0 ? (
-              ds >= t0 && onAdd ? <WeekDayAdd ds={ds} empty categories={categories} onAdd={onAdd} /> : (
+              ds >= t0 && onAdd ? <WeekDayAdd ds={ds} empty categories={categories} onAdd={onAdd} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder} /> : (
                 <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300/60 py-5 text-center text-xs text-slate-400 dark:border-slate-600/50">
                   Nothing planned
                 </div>
@@ -2345,7 +2334,7 @@ function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, onView, onTog
                 <ul className="space-y-1.5">
                   {items.map((x) => renderItem(x, isToday))}
                 </ul>
-                {ds >= t0 && onAdd && <WeekDayAdd ds={ds} categories={categories} onAdd={onAdd} />}
+                {ds >= t0 && onAdd && <WeekDayAdd ds={ds} categories={categories} onAdd={onAdd} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder} />}
               </>
             )}
             {openCount > 0 && <div className="mt-2 text-right text-[10px] font-semibold text-slate-400">{openCount} open</div>}
@@ -2715,9 +2704,9 @@ const inPreset = (opts, v) => opts.some(([, x]) => x === v)
 
 /** Shared reminder configuration row. Emits a reminder object (no lastAlert/snooze)
     or null via onChange. Used by the add form and the per-task editor. */
-function ReminderEditor({ initial, onChange, defaults, caption }) {
+function ReminderEditor({ initial, onChange, defaults, caption, defaultDate }) {
   const [on, setOn] = useState(!!initial)
-  const [date, setDate] = useState(initial?.date || todayStr())
+  const [date, setDate] = useState(initial?.date || defaultDate || todayStr())
   const [time, setTime] = useState(initial?.time || '')
   const [lead, setLead] = useState(initial?.lead ?? defaults?.lead ?? 0)
   const [repeat, setRepeat] = useState(initial?.repeat ?? defaults?.repeat ?? 0)
@@ -2779,7 +2768,7 @@ function ReminderEditor({ initial, onChange, defaults, caption }) {
 }
 
 /* --------------------------------- Add form -------------------------------- */
-function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories }) {
+function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories, day, compact = false, onClose }) {
   const [text, setText] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [category, setCategory] = useState(categories[0]?.name || 'Work')
@@ -2797,6 +2786,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
   // Press N anywhere (outside a text box or dialog) to start a new task
   useEffect(() => {
+    if (compact) return  // only the main form listens, not the ones inside the Week cards
     const onKey = (e) => {
       if (e.key.toLowerCase() !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return
       const t = e.target
@@ -2840,7 +2830,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
     // Manual editor wins; otherwise fall back to a natural-language time (today, once).
     const reminder = rem
       ? { ...rem, lastAlert: null, snoozeUntil: null }
-      : (p.reminder ? { date: p.tomorrow ? dateStr(new Date(Date.now() + 864e5)) : todayStr(), time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null)
+      : (p.reminder ? { date: day || (p.tomorrow ? dateStr(new Date(Date.now() + 864e5)) : todayStr()), time: p.reminder, lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null } : null)
     const pending = subDraft.trim() ? [...subs, { ...subOpts, text: subDraft.trim().slice(0, 500) }] : subs  // a half-typed subtask is not lost
     onAdd({
       text: p.text,
@@ -2859,7 +2849,17 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
   return (
     <form onSubmit={submit}
-      className="glass mb-5 rounded-[1.75rem] p-5 transition-shadow duration-300 focus-within:shadow-[0_0_0_1px_rgba(14,165,233,0.28),0_14px_40px_-14px_rgba(14,165,233,0.3)]">
+      onKeyDown={compact ? (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose?.() } } : undefined}
+      className={compact
+        ? 'animate-fade-in glass-sm mt-2 rounded-2xl p-3 transition-shadow duration-300 focus-within:shadow-[0_0_0_1px_rgba(14,165,233,0.28)]'
+        : 'glass mb-5 rounded-[1.75rem] p-5 transition-shadow duration-300 focus-within:shadow-[0_0_0_1px_rgba(14,165,233,0.28),0_14px_40px_-14px_rgba(14,165,233,0.3)]'}>
+      {compact && (
+        <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-300">
+          New task
+          <button type="button" onClick={onClose} aria-label="Close the new task form" title="Close (Esc)"
+            className="rounded-full p-1 text-slate-400 transition hover:bg-slate-500/10 hover:text-slate-600 dark:hover:text-slate-200"><X size={13} /></button>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <div className="relative min-w-0 flex-1">
           <Sparkles size={16} strokeWidth={2.2} className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${text ? 'text-sky-500' : 'text-slate-400'}`} aria-hidden="true" />
@@ -2867,7 +2867,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
             ref={taskRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Try: Email Sam at 5pm #work !high"
+            placeholder={compact ? 'New task… #work !high at 5pm' : 'Try: Email Sam at 5pm #work !high'}
             aria-label="New task" maxLength={2000} title="Add a task. Press N anywhere to jump here"
             autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
             className={`w-full rounded-full border border-slate-200 bg-slate-50 py-3 pl-11 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50 ${text ? 'pr-12' : 'pr-5'}`}
@@ -2917,7 +2917,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           {subCount > 0 && <span className="rounded-full bg-teal-500/20 px-1.5 text-[11px] font-bold tabular-nums">{subCount}</span>}
         </button>
         </Captioned>
-        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} caption="Reminder" />
+        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} caption="Reminder" defaultDate={day} />
         {rem && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
@@ -2978,7 +2978,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
       )}
 
       {/* hints for the quick-add shortcuts while the box is empty; a tap types them in */}
-      {(!parsed || !parsed.text) && (  /* empty, or only shortcuts typed so far */
+      {!compact && (!parsed || !parsed.text) && (  /* empty, or only shortcuts typed so far */
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
           <span>Quick add:</span>
           {[...categories.filter((c) => /^\w+$/.test(c.name)).slice(0, 2).map((c) => `#${c.name.toLowerCase()}`), '!high', 'at 5pm', 'tomorrow'].map((tok) => (
