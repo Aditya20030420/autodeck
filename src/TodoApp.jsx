@@ -2613,7 +2613,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
   return (
     <form onSubmit={submit}
-      className="glass mb-5 rounded-[1.75rem] p-5">
+      className="glass mb-5 rounded-[1.75rem] p-5 transition-shadow duration-300 focus-within:shadow-[0_0_0_1px_rgba(14,165,233,0.28),0_14px_40px_-14px_rgba(14,165,233,0.3)]">
       <div className="flex items-center gap-3">
         <div className="relative min-w-0 flex-1">
           <Sparkles size={16} strokeWidth={2.2} className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${text ? 'text-sky-500' : 'text-slate-400'}`} aria-hidden="true" />
@@ -2624,8 +2624,15 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
             placeholder="Try: Email Sam at 5pm #work !high"
             aria-label="New task" maxLength={2000} title="Add a task. Press N anywhere to jump here"
             autoFocus={!matchMedia("(pointer: coarse)").matches}  /* a phone would pop the keyboard up on every launch */
-            className="w-full rounded-full border border-slate-200 bg-slate-50 py-3 pl-11 pr-5 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50"
+            className={`w-full rounded-full border border-slate-200 bg-slate-50 py-3 pl-11 text-base outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950/50 ${text ? 'pr-12' : 'pr-5'}`}
           />
+          {text && (
+            <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
+              {text.length > 1800 && <span className="text-[10px] font-semibold tabular-nums text-amber-500">{text.length}/2000</span>}
+              <button type="button" aria-label="Clear the task box" title="Clear" onClick={() => { setText(''); taskRef.current?.focus() }}
+                className="animate-pop rounded-full p-1 text-slate-400 transition hover:bg-slate-500/15 hover:text-slate-600 active:scale-90 dark:hover:text-slate-200"><X size={14} /></button>
+            </div>
+          )}
         </div>
         {/* Ready (something typed): the brand gradient with a glow, a sheen that sweeps across on hover, and a plus that turns. Empty: a muted version. */}
         <button type="submit" title="Add task (Enter)" aria-disabled={!text.trim()}
@@ -2664,11 +2671,15 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
       {/* subtasks added together with the task */}
       {subsOpen && (
-        <div className="animate-fade-up mt-3 rounded-2xl border border-slate-200/70 bg-slate-500/[0.04] p-3 dark:border-slate-700/60">
+        <div className="animate-fade-up mt-3 rounded-2xl border border-l-[3px] border-slate-200/70 border-l-teal-500/60 bg-slate-500/[0.04] p-3 dark:border-slate-700/60 dark:border-l-teal-500/60">
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <ListTodo size={12} className="text-teal-500" /> Steps
+            {subCount > 0 && <span className="rounded-full bg-teal-500/15 px-1.5 text-[10px] tabular-nums text-teal-700 dark:text-teal-300">{subCount}</span>}
+          </div>
           {subs.length > 0 && (
             <ul className="mb-2 space-y-1" aria-label="Subtasks to add">
               {subs.map((st, i) => (
-                <li key={i} className="rounded-lg px-1 text-sm">
+                <li key={i} className="animate-fade-in rounded-lg px-1 py-0.5 text-sm transition-colors hover:bg-slate-500/[0.06]">
                   <div className="flex items-center gap-2">
                     <span className="h-4 w-4 shrink-0 rounded border border-slate-300 dark:border-slate-600" aria-hidden="true" />
                     <span className="min-w-0 flex-1 break-words">{st.text}</span>
@@ -2687,8 +2698,8 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
               ))}
             </ul>
           )}
-          <div className="flex items-center gap-2">
-            <Plus size={14} className="shrink-0 text-slate-400" />
+          <div className="flex items-center gap-2 rounded-xl bg-slate-500/[0.06] px-2.5 transition focus-within:bg-slate-500/[0.1] focus-within:ring-2 focus-within:ring-teal-500/30">
+            <Plus size={14} className="shrink-0 text-teal-500" />
             <input ref={subRef} value={subDraft} onChange={(e) => setSubDraft(e.target.value)} aria-label="New subtask"
               placeholder={subs.length ? 'Add another step… (Enter)' : 'Add a step… (Enter). Paste a list to add several.'}
               maxLength={500}
@@ -2701,7 +2712,8 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
                 const t = e.clipboardData.getData('text')
                 if (/\r?\n/.test(t.trim())) { e.preventDefault(); addSubs(t) }
               }}
-              className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-slate-400" />
+              className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-slate-400" />
+            {subDraft.trim() && <kbd className="animate-pop shrink-0 rounded border border-slate-300/60 px-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-600">Enter</kbd>}
           </div>
           {/* the same pills as the main task, for the step being typed */}
           <div className="mt-2.5 border-t border-slate-200/60 pt-2.5 dark:border-slate-700/60">
@@ -2717,7 +2729,9 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           <span>Quick add:</span>
           {[...categories.filter((c) => /^\w+$/.test(c.name)).slice(0, 2).map((c) => `#${c.name.toLowerCase()}`), '!high', 'at 5pm', 'tomorrow'].map((tok) => (
             <button key={tok} type="button" onClick={() => insertToken(tok)}
-              className="rounded-full bg-slate-500/10 px-2 py-0.5 font-semibold text-slate-500 transition hover:bg-sky-500/15 hover:text-sky-600 active:scale-95 dark:text-slate-400 dark:hover:text-sky-300">{tok}</button>
+              className={`rounded-full px-2.5 py-0.5 font-semibold transition hover:-translate-y-px hover:brightness-110 active:scale-95 ${
+                tok[0] === '#' ? 'bg-teal-500/12 text-teal-600 dark:text-teal-300' : tok === '!high' ? 'bg-rose-500/12 text-rose-600 dark:text-rose-300'
+                : tok === 'tomorrow' ? 'bg-sky-500/12 text-sky-600 dark:text-sky-300' : 'bg-lime-500/15 text-lime-700 dark:text-lime-300'}`}>{tok}</button>
           ))}
           <span className="ml-auto hidden items-center gap-1 sm:flex">Press <kbd className="rounded border border-slate-300/60 px-1 font-sans font-semibold dark:border-slate-600">N</kbd> anywhere to add</span>
         </div>
@@ -2725,7 +2739,8 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
 
       {/* live preview of natural-language shortcuts */}
       {detected && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-black/5 pt-3 text-[11px] dark:border-white/10">
+        <div className="animate-fade-in mt-3 flex flex-wrap items-center gap-1.5 border-t border-black/5 pt-3 text-[11px] dark:border-white/10">
+          <Sparkles size={12} className="text-sky-500" />
           <span className="text-slate-400">Detected:</span>
           {parsed.priority && (
             <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-600 dark:text-rose-300">
