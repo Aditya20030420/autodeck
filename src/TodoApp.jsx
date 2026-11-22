@@ -2847,6 +2847,20 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
   const subCount = subs.length + (subDraft.trim() ? 1 : 0)
   const catDot = (name) => <CategoryIcon name={name} color={catColor(categories, name)} />
 
+  // Ready (something typed): the brand gradient with a glow, a sheen that sweeps across on hover, and a plus that turns. Empty: a muted version.
+  const addBtn = (
+    <button type="submit" title="Add task (Enter)" aria-disabled={!text.trim()}
+      className={`group relative flex shrink-0 items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-teal-500 to-sky-500 py-2.5 pl-5 pr-2.5 text-sm font-bold text-white transition-all duration-300 [transition-timing-function:var(--ease-out)] active:scale-95 ${
+        compact ? 'w-full justify-center' : ''} ${
+        text.trim() ? 'shadow-lg shadow-sky-500/30 hover:-translate-y-px hover:shadow-xl hover:shadow-sky-500/40 hover:brightness-110' : 'opacity-55 saturate-75'}`}>
+      <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+      <span className="relative">Add</span>
+      <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/20 transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover:scale-110 group-active:scale-95">
+        <Plus size={15} strokeWidth={2.4} className="transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover:rotate-90" />
+      </span>
+    </button>
+  )
+
   return (
     <form onSubmit={submit}
       onKeyDown={compact ? (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose?.() } } : undefined}
@@ -2880,19 +2894,10 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
             </div>
           )}
         </div>
-        {/* Ready (something typed): the brand gradient with a glow, a sheen that sweeps across on hover, and a plus that turns. Empty: a muted version. */}
-        <button type="submit" title="Add task (Enter)" aria-disabled={!text.trim()}
-          className={`group relative flex shrink-0 items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-teal-500 to-sky-500 py-2.5 pl-5 pr-2.5 text-sm font-bold text-white transition-all duration-300 [transition-timing-function:var(--ease-out)] active:scale-95 ${
-            text.trim() ? 'shadow-lg shadow-sky-500/30 hover:-translate-y-px hover:shadow-xl hover:shadow-sky-500/40 hover:brightness-110' : 'opacity-55 saturate-75'}`}>
-          <span aria-hidden="true" className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-          <span className="relative">Add</span>
-          <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/20 transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover:scale-110 group-active:scale-95">
-            <Plus size={15} strokeWidth={2.4} className="transition-transform duration-300 [transition-timing-function:var(--spring)] group-hover:rotate-90" />
-          </span>
-        </button>
+        {!compact && addBtn}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-end gap-x-2 gap-y-2.5 text-sm">
+      <div className={`mt-3 flex flex-wrap items-end gap-x-2 gap-y-2.5 text-sm ${compact ? '[&_.h-9]:h-8 [&_.h-9]:text-xs' : ''}`}>
         <Captioned text="Priority">
           <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
             tint={PRIORITY_HEX[priority]} lead={<PriorityIcon p={priority} />}>
@@ -2990,6 +2995,8 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           <span className="ml-auto hidden items-center gap-1 sm:flex">Press <kbd className="rounded border border-slate-300/60 px-1 font-sans font-semibold dark:border-slate-600">N</kbd> anywhere to add</span>
         </div>
       )}
+
+      {compact && <div className="mt-3">{addBtn}</div>}
 
       {/* live preview of natural-language shortcuts */}
       {detected && (
