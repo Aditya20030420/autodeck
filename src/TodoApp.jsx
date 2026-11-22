@@ -2685,7 +2685,7 @@ function Select({ value, onChange, label, title, className = '', style, lead, di
 function Captioned({ text, children }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{text}</span>
+      {text && <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{text}</span>}
       {children}
     </div>
   )
@@ -2898,6 +2898,36 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
       </div>
 
       <div className={`mt-3 flex flex-wrap items-end gap-x-2 gap-y-2.5 text-sm ${compact ? '[&_.h-9]:h-8 [&_.h-9]:text-xs' : ''}`}>
+        {compact ? (
+          <>
+            <div className="flex w-full flex-col gap-1">
+              <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Priority</span>
+              <div role="radiogroup" aria-label="Priority" className="flex overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                {[...PRIORITIES].reverse().map((pr) => (
+                  <button key={pr} type="button" role="radio" aria-checked={priority === pr} onClick={() => setPriority(pr)}
+                    className={`flex flex-1 items-center justify-center gap-1 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                      priority === pr ? PRIORITY_BADGE[pr] : 'text-slate-500 hover:bg-slate-500/10 dark:text-slate-400'}`}>
+                    <PriorityIcon p={pr} size={12} />{pr}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-1">
+              <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Category</span>
+              <div role="radiogroup" aria-label="Category" className="flex flex-wrap gap-1.5">
+                {categories.map((c) => (
+                  <button key={c.name} type="button" role="radio" aria-checked={category === c.name} onClick={() => setCategory(c.name)}
+                    style={category === c.name ? { borderColor: `${c.color}80`, backgroundColor: `${c.color}26` } : undefined}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
+                      category === c.name ? 'text-slate-800 dark:text-slate-100' : 'border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400'}`}>
+                    <CategoryIcon name={c.name} color={c.color} size={12} />{c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
         <Captioned text="Priority">
           <ChipSelect label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}
             tint={PRIORITY_HEX[priority]} lead={<PriorityIcon p={priority} />}>
@@ -2909,12 +2939,14 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
             {categories.map((c) => <option key={c.name} value={c.name} icon={<CategoryIcon name={c.name} color={c.color} />}>{c.name}</option>)}
           </ChipSelect>
         </Captioned>
-        <Captioned text="Repeat">
+          </>
+        )}
+        <Captioned text={compact ? '' : 'Repeat'}>
           <ChipSelect label="Repeat" value={recur} onChange={(e) => setRecur(e.target.value)} lead={<RotateCw size={13} strokeWidth={2.2} />}>
             {RECUR_OPTIONS.map(([l, v]) => <option key={v} value={v}>{l || 'No repeat'}</option>)}
           </ChipSelect>
         </Captioned>
-        <Captioned text="Steps">
+        <Captioned text={compact ? '' : 'Steps'}>
         <button type="button" onClick={() => { setSubsOpen((o) => !o); setTimeout(() => subRef.current?.focus(), 50) }} aria-expanded={subsOpen}
           title="Break the task into steps"
           className={`${CHIP_BASE} gap-1.5 hover:border-slate-300 ${subsOpen || subCount ? 'border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300' : 'text-slate-600 dark:text-slate-300'}`}>
@@ -2922,7 +2954,7 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           {subCount > 0 && <span className="rounded-full bg-teal-500/20 px-1.5 text-[11px] font-bold tabular-nums">{subCount}</span>}
         </button>
         </Captioned>
-        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} caption="Reminder" defaultDate={day} />
+        <ReminderEditor key={`${remKey}-${remDefaults.lead}-${remDefaults.repeat}`} initial={null} onChange={setRem} defaults={remDefaults} caption={compact ? undefined : 'Reminder'} defaultDate={day} />
         {rem && !notifyOn && (
           <span className="text-xs text-slate-400">Alerts in-app. Enable notifications for desktop alerts too.</span>
         )}
