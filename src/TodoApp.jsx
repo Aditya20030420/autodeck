@@ -8,7 +8,7 @@ import {
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
   Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles,
-  ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon, SlidersHorizontal, Palette, Info,
+  ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon, SlidersHorizontal, Palette, Info, Keyboard, RotateCcw,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -1403,7 +1403,7 @@ export default function TodoApp() {
             volume={volume} setVolume={setVolume}
             hpAlarm={hpAlarm} setHpAlarm={setHpAlarm}
             remDefaults={remDefaults} setRemDefaults={setRemDefaults}
-            categories={categories} setCategories={setCategories}
+            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark}
             notify={notify} muted={muted} onRequestNotify={requestNotify} />
         )}
 
@@ -3575,9 +3575,31 @@ function SettingsSection({ icon: Icon, title, delay = 0, children }) {
     </section>
   )
 }
+const SETTINGS_TABS = [
+  { id: 'look', label: 'Look', Icon: Palette },
+  { id: 'alerts', label: 'Alerts', Icon: Bell },
+  { id: 'sound', label: 'Sound', Icon: Volume2 },
+  { id: 'categories', label: 'Categories', Icon: Tag },
+  { id: 'shortcuts', label: 'Shortcuts', Icon: Keyboard },
+]
 const ROW = 'flex items-center justify-between gap-3 px-4 py-3'
 
-function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, notify, muted, onRequestNotify }) {
+function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, notify, muted, onRequestNotify }) {
+  const [tab, setTab] = useState('look')
+  const navEl = useRef(null)
+  const [pill, setPill] = useState(null)  // {x, y, w, h} of the active tab; null until measured (so the first paint doesn't animate)
+  const placePill = useCallback(() => {
+    const b = navEl.current?.querySelector('[aria-selected="true"]')
+    if (b) setPill({ x: b.offsetLeft, y: b.offsetTop, w: b.offsetWidth, h: b.offsetHeight })
+  }, [])
+  useLayoutEffect(() => {
+    placePill()
+    const nav = navEl.current
+    if (!nav || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(placePill)
+    ro.observe(nav)
+    return () => ro.disconnect()
+  }, [tab, placePill])
   const [newCat, setNewCat] = useState('')
   const [newColor, setNewColor] = useState('#0ea5e9')
   useEffect(() => {
@@ -3592,6 +3614,12 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
     setCategories([...categories, { name, color: newColor }])
     setNewCat('')
   }
+  const openBy = useMemo(() => {
+    const m = {}
+    for (const t of tasks || []) if (!t.done) m[t.category] = (m[t.category] || 0) + 1
+    return m
+  }, [tasks])
+  const resetAll = () => { setSoundOn(true); setVolume(0.8); setHpAlarm(true); setRemDefaults({ lead: 0, repeat: 0 }) }
   const removeCat = (name) => setCategories(categories.filter((c) => c.name !== name))
   const recolor = (name, color) => setCategories(categories.map((c) => (c.name === name ? { ...c, color } : c)))
   const sel = 'rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-950/50'
@@ -3623,26 +3651,70 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="animate-fade-in absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div role="dialog" aria-label="Settings"
-        className="glass animate-fade-up relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-[1.5rem] shadow-soft">
+        className="glass animate-fade-up relative z-10 flex h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-[1.5rem] shadow-soft sm:h-[34rem] sm:max-w-2xl">
         <div className={`flex shrink-0 items-center gap-2 px-6 pb-3 pt-6 transition-shadow duration-200 ${edge.top ? 'shadow-[0_8px_14px_-12px_rgba(0,0,0,0.5)]' : ''}`}>
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-sky-500 text-white shadow-sm"><Settings size={18} /></span>
           <div className="leading-tight">
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Settings</h2>
-            <p className="text-xs font-semibold text-slate-400">Reminders, sound and categories · v{__APP_VERSION__}</p>
+            <p className="text-xs font-semibold text-slate-400">Pick a topic on the left · v{__APP_VERSION__}</p>
           </div>
           <button onClick={onClose} aria-label="Close settings" className="ml-auto rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-700 dark:hover:bg-white/10"><X size={18} /></button>
         </div>
 
-        <div ref={scroller} onScroll={measure} data-edge-top={edge.top} data-edge-bottom={edge.bottom}
-          className="fancy-scroll scroll-fade min-h-0 flex-1 overflow-y-auto pb-6 pl-6 pr-4 pt-1 text-sm">
-        <div className="space-y-5">
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+        <nav ref={navEl} role="tablist" aria-orientation="vertical" aria-label="Settings topics"
+          onKeyDown={(e) => {
+            const i = SETTINGS_TABS.findIndex((t) => t.id === tab)
+            const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0
+            if (!d) return
+            e.preventDefault()
+            const n = SETTINGS_TABS[(i + d + SETTINGS_TABS.length) % SETTINGS_TABS.length]
+            setTab(n.id); e.currentTarget.querySelector(`#settings-tab-${n.id}`)?.focus()
+          }}
+          className="fancy-scroll relative flex shrink-0 gap-1 overflow-x-auto px-4 pb-2 sm:w-44 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:border-r sm:border-black/5 sm:px-3 sm:pb-6 sm:pt-1 dark:sm:border-white/10">
+          {pill && (
+            <span aria-hidden="true" className="pointer-events-none absolute left-0 top-0 rounded-xl bg-teal-500/15 will-change-transform [transition:transform_.45s_var(--spring),width_.45s_var(--spring),height_.45s_var(--spring)] motion-reduce:transition-none"
+              style={{ transform: `translate(${pill.x}px, ${pill.y}px)`, width: pill.w, height: pill.h }}>
+              <span className="absolute left-0 top-1/2 hidden h-4 w-[3px] -translate-y-1/2 rounded-full bg-gradient-to-b from-teal-400 to-sky-500 sm:block" />
+            </span>
+          )}
+          {SETTINGS_TABS.map(({ id, label, Icon }) => (
+            <button key={id} id={`settings-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls="settings-pane"
+              tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)}
+              className={`group/tab relative flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition-[color,background-color,scale] duration-300 active:scale-[0.97] ${
+                tab === id ? 'text-teal-700 dark:text-teal-300' : 'text-slate-500 hover:bg-black/5 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-200'}`}>
+              <Icon size={15} className={`transition-transform duration-500 [transition-timing-function:var(--spring)] ${tab === id ? 'scale-110' : 'group-hover/tab:scale-110'}`} /> {label}
+            </button>
+          ))}
+        </nav>
+        <div ref={scroller} id="settings-pane" role="tabpanel" aria-labelledby={`settings-tab-${tab}`} onScroll={measure} data-edge-top={edge.top} data-edge-bottom={edge.bottom}
+          className="fancy-scroll scroll-fade min-h-0 flex-1 overflow-y-auto pb-6 pl-4 pr-4 pt-1 text-sm sm:pl-5">
+        <div key={tab} className="ad-pane space-y-5">
+          {/* Appearance */}
+          {tab === 'look' && <SettingsSection icon={Sun} title="Appearance">
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Theme</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Same as the header button</div>
+              </div>
+              <div role="radiogroup" aria-label="Theme" className="flex gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                {[[false, 'Light', Sun], [true, 'Dark', Moon]].map(([v, l, I]) => (
+                  <button key={l} type="button" role="radio" aria-checked={dark === v} onClick={() => setDark(v)}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${dark === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                    <I size={13} /> {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </SettingsSection>}
+
           {/* Notifications */}
-          <SettingsSection icon={Bell} title="Notifications">
+          {tab === 'alerts' && <SettingsSection icon={Bell} title="Notifications">
             <div className={ROW}>
               <div>
                 <div className="font-semibold text-slate-700 dark:text-slate-200">Desktop notifications</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
-                  <span className={`h-1.5 w-1.5 rounded-full ${notify ? (muted ? 'bg-amber-400' : 'bg-emerald-500') : 'bg-slate-400'}`} />Currently: {notifState}
+                <div className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${notify ? (muted ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300') : 'bg-slate-500/10 text-slate-500'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${notify && !muted ? 'animate-pulse bg-emerald-500' : notify ? 'bg-amber-400' : 'bg-slate-400'}`} />{notifState}
                 </div>
               </div>
               <button onClick={onRequestNotify}
@@ -3655,19 +3727,19 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
               <div className={ROW}>
                 <div>
                   <div className="font-semibold text-slate-700 dark:text-slate-200">Reminders when closed</div>
-                  <div className="mt-0.5 text-xs text-slate-400">Closing the window keeps AutoDeck in the tray, and it starts with Windows, so reminders still arrive. Quit from the tray icon.</div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Closing the window keeps AutoDeck in the tray, and it starts with Windows, so reminders still arrive. Quit from the tray icon.</div>
                 </div>
                 <Switch checked={bg} onChange={changeBg} label="Reminders when closed" />
               </div>
             )}
-          </SettingsSection>
+          </SettingsSection>}
 
           {/* Sound */}
-          <SettingsSection icon={Volume2} title="Sound" delay={50}>
+          {tab === 'sound' && <SettingsSection icon={Volume2} title="Sound">
             <div className={ROW}>
               <div>
                 <div className="font-semibold text-slate-700 dark:text-slate-200">Sound effects</div>
-                <div className="mt-0.5 text-xs text-slate-400">Alarms and UI chimes</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Alarms and UI chimes</div>
               </div>
               <Switch checked={soundOn} onChange={setSoundOn} label="Sound effects" />
             </div>
@@ -3687,14 +3759,14 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
             <div className={ROW}>
               <div>
                 <div className="font-semibold text-slate-700 dark:text-slate-200">Louder alarm for high priority</div>
-                <div className="mt-0.5 text-xs text-slate-400">Off = high priority uses the standard chime</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Off = high priority uses the standard chime</div>
               </div>
               <Switch checked={hpAlarm} onChange={setHpAlarm} label="Louder alarm for high priority" />
             </div>
-          </SettingsSection>
+          </SettingsSection>}
 
           {/* Default reminder times */}
-          <SettingsSection icon={SlidersHorizontal} title="Defaults for new reminders" delay={100}>
+          {tab === 'alerts' && <SettingsSection icon={SlidersHorizontal} title="Defaults for new reminders" delay={50}>
             <div className="px-4 py-3">
               <div className="flex flex-wrap gap-3">
                 <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -3712,17 +3784,18 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
                   </Select>
                 </label>
               </div>
-              <p className="mt-2 text-xs text-slate-400">Pre-fills the reminder fields when you add a task.</p>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Pre-fills the reminder fields when you add a task.</p>
             </div>
-          </SettingsSection>
+          </SettingsSection>}
 
           {/* Categories */}
-          <SettingsSection icon={Palette} title="Categories" delay={150}>
+          {tab === 'categories' && <SettingsSection icon={Palette} title="Categories">
             {categories.map((c) => (
               <div key={c.name} className="flex items-center gap-3 px-4 py-2.5">
                 <input type="color" value={c.color} onChange={(e) => recolor(c.name, e.target.value)}
                   aria-label={`Colour for ${c.name}`} title="Change colour" className="ad-color" />
                 <span className="flex-1 text-sm text-slate-700 dark:text-slate-200">{c.name}</span>
+                <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">{openBy[c.name] || 0} open</span>
                 <button onClick={() => removeCat(c.name)} aria-label={`Delete ${c.name}`} title="Delete category"
                   disabled={categories.length <= 1}
                   className="rounded-full p-1 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-30"><X size={14} /></button>
@@ -3735,12 +3808,33 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
                 className={`${sel} min-w-0 flex-1`} />
               <button onClick={addCat} className="rounded-full bg-teal-500 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600 active:scale-95">Add</button>
             </div>
-          </SettingsSection>
+          </SettingsSection>}
 
-          <p className="flex items-start gap-2 px-1 text-xs text-slate-400">
+          {tab === 'shortcuts' && <SettingsSection icon={Keyboard} title="Shortcuts and reset">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
+              {[['N', 'New task'], ['Esc', 'Close a dialog'], ['Enter', 'Add / save'], ['Double-click', 'Rename a task']].map(([k, l]) => (
+                <span key={k} className="flex items-center gap-1.5">
+                  <kbd className="rounded-md border border-slate-300 bg-white/70 px-1.5 py-0.5 font-sans text-[11px] font-semibold text-slate-600 shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">{k}</kbd>{l}
+                </span>
+              ))}
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Reset sound and reminder defaults</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Your tasks and categories are not touched</div>
+              </div>
+              <button onClick={resetAll}
+                className="flex shrink-0 items-center gap-1 rounded-full bg-slate-500/10 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-500/20 active:scale-95 dark:text-slate-200">
+                <RotateCcw size={12} /> Reset
+              </button>
+            </div>
+          </SettingsSection>}
+
+          {tab === 'alerts' && <p className="flex items-start gap-2 px-1 text-xs text-slate-500 dark:text-slate-400">
             <Info size={14} className="mt-px shrink-0 text-teal-500" />
             <span>Manage active reminders in the <span className="font-semibold text-slate-500 dark:text-slate-300">Upcoming reminders</span> panel on the Tasks tab — view, cancel, or edit each one there.</span>
-          </p>
+          </p>}
+        </div>
         </div>
         </div>
       </div>
