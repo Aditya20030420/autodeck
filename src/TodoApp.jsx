@@ -2474,6 +2474,8 @@ function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0,
     : 'All done. Beautiful.'
   const left = Math.max(0, total - done)
   const peak = Math.max(1, ...(activity?.days || []).map((d) => d.count))
+  const top = peak * 1.3  // the chart's full height: the tallest bar stops short of it, so its number has room
+  const ticks = peak <= 3 ? Array.from({ length: peak }, (_, i) => i + 1) : [Math.round(peak / 2), peak]  // whole numbers only
   const delta = activity ? activity.week - activity.prevWeek : 0
   const tiles = [
     { k: 'To do', v: pending, tone: 'bg-sky-500/10 text-sky-600 dark:text-sky-300', icon: <TodoGlyph on={pending > 0} />, on: pending > 0, go: pending > 0 ? () => onFilter?.('Active') : null },
@@ -2560,21 +2562,25 @@ function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0,
           <div className="flex min-w-0 flex-col rounded-2xl bg-slate-500/[0.07] p-4 dark:bg-white/[0.05]">
             <div className="mb-3 flex items-baseline justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"><CalendarDays size={13} className="text-teal-500" /> Last 7 days</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-200"><CountNum value={activity.week} /></span> completed</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-200"><CountNum value={activity.week} /></span><span className="ml-1">completed</span></span>
             </div>
             <div className="relative min-h-[9rem] flex-1">
-              {[0.25, 0.5, 0.75, 1].map((g) => <div key={g} aria-hidden="true" className="absolute inset-x-0 border-t border-slate-400/15" style={{ bottom: `${g * 100}%` }} />)}
+              {ticks.map((t) => (
+                <div key={t} aria-hidden="true" className="absolute inset-x-0 border-t border-slate-400/15" style={{ bottom: `${(t / top) * 100}%` }}>
+                  <span className="absolute -top-2 left-0 w-5 text-[9px] font-semibold tabular-nums text-slate-400">{t}</span>
+                </div>
+              ))}
               {activity.avg > 0 && (
-                <div aria-hidden="true" className="absolute inset-x-0 border-t border-dashed border-teal-500/60" style={{ bottom: `${Math.min(100, (activity.avg / peak) * 100)}%` }}>
-                  <span className="absolute -top-4 right-0 rounded bg-teal-500/15 px-1 text-[9px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-300">avg {activity.avg.toFixed(1)}</span>
+                <div aria-hidden="true" className="absolute left-6 right-0 border-t border-dashed border-teal-500/60" style={{ bottom: `${Math.min(100, (activity.avg / top) * 100)}%` }}>
+                  <span className="absolute -top-4 left-1 rounded bg-teal-500/15 px-1 text-[9px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-300">avg {activity.avg.toFixed(1)}</span>
                 </div>
               )}
               {activity.week === 0 && (
                 <p className="absolute inset-0 flex items-center justify-center px-8 text-center text-xs text-slate-400">Finish a task and today's bar will start to fill.</p>
               )}
-              <div className="absolute inset-0 flex items-stretch gap-2" role="img" aria-label={`Tasks completed per day: ${activity.days.map((d) => `${d.label} ${d.count}`).join(', ')}`}>
+              <div className="absolute inset-y-0 left-6 right-0 flex items-stretch gap-2" role="img" aria-label={`Tasks completed per day: ${activity.days.map((d) => `${d.label} ${d.count}`).join(', ')}`}>
                 {activity.days.map((d, i) => {
-                  const h = d.count ? Math.max(10, (d.count / peak) * 100) : 3
+                  const h = d.count ? Math.max(10, (d.count / top) * 100) : 3
                   return (
                     <div key={d.ds} title={`${d.today ? 'Today' : d.label}: ${d.count} completed`} className="group relative flex min-w-0 flex-1 flex-col items-center justify-end">
                       {d.count > 0 && <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[10px] font-bold tabular-nums text-slate-600 transition-transform duration-200 group-hover:-translate-y-0.5 dark:text-slate-300" style={{ bottom: `calc(${h}% + 3px)` }}>{d.count}</span>}
