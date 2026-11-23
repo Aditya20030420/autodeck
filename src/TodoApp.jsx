@@ -2196,11 +2196,10 @@ function ArchiveView({ archive, categories, keepDays, setKeepDays, onRestore, on
 /* ---------------------------------- Week ----------------------------------- */
 /** Adds a task to one day of the week: a button that opens the same form as the Tasks tab (priority, category, repeat, steps,
     reminder), made for that day. */
-function WeekDayAdd({ ds, empty, categories, onAdd, remDefaults, notifyOn, onFirstReminder }) {
-  const [open, setOpen] = useState(false)
+function WeekDayAdd({ ds, empty, categories, onAdd, remDefaults, notifyOn, onFirstReminder, open, onOpen, onClose }) {
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} aria-label={`Add a task on ${ds}`}
+      <button type="button" onClick={() => onOpen(ds)} aria-label={`Add a task on ${ds}`}
         className={empty
           ? 'flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300/60 py-5 text-xs font-semibold text-slate-400 transition hover:border-teal-500/60 hover:bg-teal-500/5 hover:text-teal-600 dark:border-slate-600/50 dark:hover:text-teal-300'
           : 'mt-2 flex items-center justify-center gap-1 rounded-lg py-1 text-[11px] font-semibold text-slate-400 transition hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-300'}>
@@ -2210,7 +2209,7 @@ function WeekDayAdd({ ds, empty, categories, onAdd, remDefaults, notifyOn, onFir
   }
   return (
     <AddTaskForm compact day={ds} categories={categories} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder}
-      onAdd={(d) => { onAdd({ ...d, day: ds }); setOpen(false) }} onClose={() => setOpen(false)} />
+      onAdd={(d) => { onAdd({ ...d, day: ds }); onClose() }} onClose={onClose} />
   )
 }
 
@@ -2219,6 +2218,33 @@ function WeekDayAdd({ ds, empty, categories, onAdd, remDefaults, notifyOn, onFir
 function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, remDefaults, notifyOn, onFirstReminder, onView, onToggle, onReschedule, onDelete }) {
   const [openId, setOpenId] = useState(null)  // task whose action row is expanded
   const [offset, setOffset] = useState(0)     // weeks away from the current one
+  // The day whose "new task" form is open. Its card grows to two columns and the others move aside; every card glides from where it
+  // was to where it is now (a FLIP animation: measure before, change, then animate the difference).
+  const [openDay, setOpenDay] = useState(null)
+  const cardEls = useRef(new Map())
+  const before = useRef(null)
+  const changeOpen = (v) => {
+    before.current = new Map([...cardEls.current].map(([k, el]) => [k, el.getBoundingClientRect()]))
+    setOpenDay(v)
+  }
+  useLayoutEffect(() => {
+    const prev = before.current
+    before.current = null
+    if (!prev || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)) return
+    cardEls.current.forEach((el, k) => {
+      const a = prev.get(k)
+      if (!a || !el.animate) return
+      const b = el.getBoundingClientRect()
+      const dx = a.left - b.left, dy = a.top - b.top
+      const resized = Math.abs(a.width - b.width) >= 1 || Math.abs(a.height - b.height) >= 1
+      if (!resized && Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+      const from = { transform: `translate(${dx}px, ${dy}px)`, ...(resized ? { width: `${a.width}px`, height: `${a.height}px` } : {}) }
+      const to = { transform: 'none', ...(resized ? { width: `${b.width}px`, height: `${b.height}px` } : {}) }
+      if (resized) el.style.overflow = 'hidden'  // while it grows, nothing spills out of the card
+      const run = el.animate([from, to], { duration: 460, easing: 'cubic-bezier(.22, 1, .36, 1)' })
+      run.onfinish = run.oncancel = () => { el.style.overflow = '' }
+    })
+  }, [openDay])
   const t0 = todayStr()
   const days = useMemo(() => {  // rebuilt when the date changes, so the week doesn't go stale past midnight
     const base = new Date()
@@ -2291,7 +2317,7 @@ function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, remDefaults, 
         {weekItems.length === 0 ? (offset === 0 ? 'Nothing scheduled this week' : 'Nothing scheduled that week') : `${weekItems.length - weekDone} open · ${weekDone} done`}
       </span>
     </div>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-flow-row-dense gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {days.map((d, di) => {
         const ds = dateStr(d)
         const items = tasks.filter((x) => x.day === ds)
@@ -2302,7 +2328,8 @@ function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, remDefaults, 
         const weekend = d.getDay() === 0 || d.getDay() === 6
         return (
           <div key={ds} style={{ animationDelay: `${di * 40}ms` }}
-            className={`glass animate-fade-up flex flex-col rounded-2xl p-3 ${isToday ? 'ring-2 ring-teal-500/50 shadow-soft' : ds < t0 ? 'opacity-80' : ''}`}>
+            ref={(el) => { if (el) cardEls.current.set(ds, el); else cardEls.current.delete(ds) }}
+            className={`glass animate-fade-up flex flex-col rounded-2xl p-3 ${openDay === ds ? 'sm:col-span-2' : ''} ${isToday ? 'ring-2 ring-teal-500/50 shadow-soft' : ds < t0 ? 'opacity-80' : ''}`}>
             <div className="mb-2 flex items-center gap-2.5">
               <div className={`flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl leading-none ${
                 isToday ? 'bg-gradient-to-br from-teal-400 to-sky-500 text-white shadow-sm'
@@ -2324,7 +2351,7 @@ function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, remDefaults, 
               </div>
             )}
             {items.length === 0 ? (
-              ds >= t0 && onAdd ? <WeekDayAdd ds={ds} empty categories={categories} onAdd={onAdd} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder} /> : (
+              ds >= t0 && onAdd ? <WeekDayAdd ds={ds} empty categories={categories} onAdd={onAdd} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder} open={openDay === ds} onOpen={changeOpen} onClose={() => changeOpen(null)} /> : (
                 <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300/60 py-5 text-center text-xs text-slate-400 dark:border-slate-600/50">
                   Nothing planned
                 </div>
@@ -2334,7 +2361,7 @@ function WeekView({ tasks, categories = DEFAULT_CATEGORIES, onAdd, remDefaults, 
                 <ul className="space-y-1.5">
                   {items.map((x) => renderItem(x, isToday))}
                 </ul>
-                {ds >= t0 && onAdd && <WeekDayAdd ds={ds} categories={categories} onAdd={onAdd} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder} />}
+                {ds >= t0 && onAdd && <WeekDayAdd ds={ds} categories={categories} onAdd={onAdd} remDefaults={remDefaults} notifyOn={notifyOn} onFirstReminder={onFirstReminder} open={openDay === ds} onOpen={changeOpen} onClose={() => changeOpen(null)} />}
               </>
             )}
             {openCount > 0 && <div className="mt-2 text-right text-[10px] font-semibold text-slate-400">{openCount} open</div>}
@@ -2902,10 +2929,10 @@ function AddTaskForm({ onAdd, onFirstReminder, notifyOn, remDefaults, categories
           <>
             <div className="flex w-full flex-col gap-1">
               <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Priority</span>
-              <div role="radiogroup" aria-label="Priority" className="flex overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+              <div role="radiogroup" aria-label="Priority" className="flex gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
                 {[...PRIORITIES].reverse().map((pr) => (
                   <button key={pr} type="button" role="radio" aria-checked={priority === pr} onClick={() => setPriority(pr)}
-                    className={`flex flex-1 items-center justify-center gap-1 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                    className={`flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-semibold transition active:scale-95 ${
                       priority === pr ? PRIORITY_BADGE[pr] : 'text-slate-500 hover:bg-slate-500/10 dark:text-slate-400'}`}>
                     <PriorityIcon p={pr} size={12} />{pr}
                   </button>
