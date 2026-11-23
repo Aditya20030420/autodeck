@@ -173,3 +173,13 @@ test('steps are kept in order of priority: High first, then Medium, then Low; a 
   assert.deepEqual(sortSubs(steps, 'High').map((s) => s.id), ['b', 'c', 'e', 'd', 'a'])     // "b" follows a High task
   assert.deepEqual(steps.map((s) => s.id), ['a', 'b', 'c', 'd', 'e'])                        // the input list is not changed
 })
+test('activity: average, busiest day, and the week before', () => {
+  const at = (off) => { const d = new Date(); d.setDate(d.getDate() + off); d.setHours(12, 0, 0, 0); return d.getTime() }
+  const done = (off) => task({ done: true, completedAt: at(off) })
+  const a = activityStats([done(0), done(-1), done(-1), done(-1), done(-8), done(-9), done(-10), done(-30)])
+  assert.equal(a.week, 4); assert.equal(a.avg, 0.6)                  // 4 in 7 days
+  assert.equal(a.prevWeek, 3)                                         // the days 8 to 14 back
+  assert.equal(a.best.count, 3); assert.equal(a.best.today, false)    // yesterday was the busiest
+  assert.equal(activityStats([]).best, null)
+  assert.equal(activityStats([done(0), done(-1)]).best.today, true)   // a tie goes to the later day
+})
