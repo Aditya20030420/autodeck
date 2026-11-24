@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('autodeck', {
   getBackground: () => ipcRenderer.invoke('bg:get'),
   setBackground: (on) => ipcRenderer.invoke('bg:set', on),
   showWindow: () => ipcRenderer.send('win:show'),
+  setTitleBar: (c) => ipcRenderer.send('titlebar:set', c),  // { bg, fg }: the title bar colours for the current theme
 })

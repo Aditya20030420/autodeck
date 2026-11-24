@@ -814,6 +814,7 @@ export default function TodoApp() {
   // Apply theme class to <html>.
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
+    if (hasTitleBar()) window.autodeck.setTitleBar(dark ? TITLEBAR.dark : TITLEBAR.light)
   }, [dark])
 
   // Mirror sound preferences to the module flags playSfx reads.
@@ -1319,7 +1320,8 @@ export default function TodoApp() {
   }, [setMuted, notify])
 
   return (
-    <div className="min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
+    <div className={`min-h-screen text-slate-900 dark:text-slate-100 transition-colors ${hasTitleBar() ? 'pt-9' : ''}`}>
+      {hasTitleBar() && <TitleBar dark={dark} />}
       {/* the page grows with the window instead of staying a narrow strip in the middle of a wide screen */}
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16 lg:max-w-6xl lg:px-8 xl:max-w-7xl 2xl:max-w-[96rem]">
 
@@ -3655,6 +3657,21 @@ const SETTINGS_TABS = [
   { id: 'categories', label: 'Categories', Icon: Tag },
   { id: 'shortcuts', label: 'Shortcuts', Icon: Keyboard },
 ]
+/* Desktop (Windows) app: the window's title bar is drawn here so it matches the theme. Windows keeps its own buttons on the right. */
+const TITLEBAR = { dark: { bg: '#12283F', fg: '#E2E8F0' }, light: { bg: '#E6F0F8', fg: '#1E293B' } }
+const hasTitleBar = () => typeof window !== 'undefined' && typeof window.autodeck?.setTitleBar === 'function'  // only the Windows build has this (Android defines other window.autodeck parts)
+function TitleBar({ dark }) {
+  const c = dark ? TITLEBAR.dark : TITLEBAR.light
+  return (
+    <div style={{ background: c.bg, color: c.fg }}
+      className="fixed inset-x-0 top-0 z-[70] flex h-9 select-none items-center gap-2 pl-3 text-xs font-semibold [-webkit-app-region:drag]">
+      <AutoDeckIcon size={16} background={false} />
+      <span>AutoDeck</span>
+      <span className="font-medium opacity-60">Automated Task Command Center</span>
+    </div>
+  )
+}
+
 const ROW = 'flex items-center justify-between gap-3 px-4 py-3'
 
 function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, notify, muted, onRequestNotify }) {

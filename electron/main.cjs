@@ -24,6 +24,12 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 
+// The window's title bar is drawn by the page (so it can match the theme); Windows still draws the minimize / maximize / close
+// buttons on top of it, in the colours the page asks for.
+const BAR_HEIGHT = 36
+const isHex = (c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)
+const isWin = process.platform === 'win32'
+
 let win = null
 let tray = null
 let quitting = false
@@ -50,6 +56,7 @@ function createWindow(show = true) {
     autoHideMenuBar: true,
     title: 'AutoDeck',
     icon: path.join(__dirname, 'icon.png'),
+    ...(isWin ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#12283F', symbolColor: '#E2E8F0', height: BAR_HEIGHT } } : {}),
     // The reminder timer must keep its 20 s beat while the window is hidden in the tray.
     webPreferences: {
       contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, allowRunningInsecureContent: false,
@@ -113,6 +120,11 @@ app.whenReady().then(() => {
   ipcMain.handle('bg:get', (e) => (ownPage(e) ? prefs.background : null))
   ipcMain.handle('bg:set', (e, on) => { if (!ownPage(e)) return null; prefs.background = !!on; savePrefs(); applyAutostart(); return prefs.background })
   ipcMain.on('win:show', (e) => { if (ownPage(e)) showWindow() })
+  // the page tells us the theme's bar colours (only plain #rrggbb values are accepted)
+  ipcMain.on('titlebar:set', (e, c) => {
+    if (!ownPage(e) || !isWin || !win || win.isDestroyed() || !c || !isHex(c.bg) || !isHex(c.fg)) return
+    try { win.setTitleBarOverlay({ color: c.bg, symbolColor: c.fg, height: BAR_HEIGHT }) } catch {}
+  })
   createWindow(!startHidden)
   createTray()
   // A PC that slept pauses the page's timers: when Windows wakes, tell the page to check its reminders at once.
