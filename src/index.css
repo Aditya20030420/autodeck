@@ -60,6 +60,8 @@ html:where(.dark)::after { opacity: .1; filter: invert(1); }
     radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.24), transparent 62%),
     radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.26), transparent 62%);
 }
+/* the aurora orbs show only when that backdrop is chosen */
+html:not([data-bg="aurora"])::before, html:not([data-bg="aurora"]) body::before { display: none; }
 /* slow orb drift — transform only, so it stays cheap */
 @keyframes aurora-drift {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
@@ -70,16 +72,6 @@ html:where(.dark)::after { opacity: .1; filter: invert(1); }
   0%, 100% { transform: translate3d(0, 0, 0) scale(1.05) rotate(0deg); }
   50% { transform: translate3d(-3.5%, 3%, 0) scale(.96) rotate(-1.5deg); }
 }
-/* faint dot grid for texture, fading out toward the edges */
-body::after {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-image: radial-gradient(rgba(15,23,42,.14) 1px, transparent 1.3px);
-  background-size: 26px 26px;
-  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 25%, transparent 80%);
-  mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 25%, transparent 80%);
-}
-:where(.dark) body::after { background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1.3px); }
-
 /* Frosted glass surface — web glassmorphism approximation (not Apple Liquid Glass) */
 .glass {
   background: rgba(236,240,246,.62);

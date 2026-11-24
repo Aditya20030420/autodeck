@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import AutoDeckIcon from './AutoDeckIcon.tsx'
+import Skyline from './Skyline.jsx'
 // jspdf is lazy-loaded inside exportPDF so its weight isn't in the initial bundle.
 // (Excel export uses dependency-free CSV — see exportCSV.)
 
@@ -707,6 +708,8 @@ export default function TodoApp() {
     typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false)
   const [muted, setMuted] = useLocalStorage('todo.muted', false)  // app-level mute (browser can't revoke permission)
   const [soundOn, setSoundOn] = useLocalStorage('todo.sound', true)  // UI sound effects on/off
+  const [backdrop, setBackdrop] = useLocalStorage('todo.backdrop', 'skyline')  // page backdrop: 'skyline' | 'aurora' | 'off'
+  useEffect(() => { document.documentElement.dataset.bg = backdrop }, [backdrop])
   const [volume, setVolume] = useLocalStorage('todo.volume', 0.8)    // master sound volume 0–1
   const [hpAlarm, setHpAlarm] = useLocalStorage('todo.hpAlarm', true) // loud alarm for high-priority reminders
   const [remDefaults, setRemDefaults] = useLocalStorage('todo.remDefaults', { lead: 0, repeat: 0 })
@@ -1322,6 +1325,7 @@ export default function TodoApp() {
   return (
     <div className={`min-h-screen text-slate-900 dark:text-slate-100 transition-colors ${hasTitleBar() ? 'pt-9' : ''}`}>
       {hasTitleBar() && <TitleBar dark={dark} />}
+      {backdrop === 'skyline' && <Skyline pct={pct} dark={dark} />}
       {/* the page grows with the window instead of staying a narrow strip in the middle of a wide screen */}
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16 lg:max-w-6xl lg:px-8 xl:max-w-7xl 2xl:max-w-[96rem]">
 
@@ -1411,7 +1415,7 @@ export default function TodoApp() {
             volume={volume} setVolume={setVolume}
             hpAlarm={hpAlarm} setHpAlarm={setHpAlarm}
             remDefaults={remDefaults} setRemDefaults={setRemDefaults}
-            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark}
+            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark} backdrop={backdrop} setBackdrop={setBackdrop}
             notify={notify} muted={muted} onRequestNotify={requestNotify} />
         )}
 
@@ -3674,7 +3678,7 @@ function TitleBar({ dark }) {
 
 const ROW = 'flex items-center justify-between gap-3 px-4 py-3'
 
-function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, notify, muted, onRequestNotify }) {
+function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, backdrop, setBackdrop, notify, muted, onRequestNotify }) {
   const [tab, setTab] = useState('look')
   const navEl = useRef(null)
   const [pill, setPill] = useState(null)  // {x, y, w, h} of the active tab; null until measured (so the first paint doesn't animate)
@@ -3793,6 +3797,18 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${dark === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
                     <I size={13} /> {l}
                   </button>
+                ))}
+              </div>
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Background</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Skyline builds as you finish tasks</div>
+              </div>
+              <div role="radiogroup" aria-label="Background" className="flex gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                {[['skyline', 'Skyline'], ['aurora', 'Aurora'], ['off', 'Off']].map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={backdrop === v} onClick={() => setBackdrop(v)}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${backdrop === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
                 ))}
               </div>
             </div>
