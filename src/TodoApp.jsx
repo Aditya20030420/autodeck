@@ -8,7 +8,7 @@ import {
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
   Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles,
-  ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon, SlidersHorizontal, Palette, Info, Keyboard, RotateCcw,
+  Clock3, SkipForward, ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon, SlidersHorizontal, Palette, Info, Keyboard, RotateCcw,
 } from 'lucide-react'
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -1005,6 +1005,37 @@ export default function TodoApp() {
       .sort((a, b) => nextReminderAt(a.reminder, nowTick) - nextReminderAt(b.reminder, nowTick)),
     [items, nowTick])
 
+  // What the header's "Up next" card cycles through: reminders that are late, then the ones coming up, then today's open tasks (highest priority first).
+  const deckList = useMemo(() => {
+    const span = (m) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${Math.floor(m / 1440)} d`)
+    const out = []
+    for (const x of dueReminders) {
+      const m = Math.max(0, Math.round((nowTick - reminderEventTime(x.reminder).getTime()) / 60000))
+      out.push({ id: x.id, text: x.text, priority: x.priority, reminder: true, late: true, when: m < 1 ? 'Due now' : `Was due ${span(m)} ago` })
+    }
+    for (const x of upcoming) {
+      const m = Math.max(0, Math.ceil((nextReminderAt(x.reminder, nowTick) - nowTick) / 60000))
+      out.push({ id: x.id, text: x.text, priority: x.priority, reminder: true, late: false, when: m < 1 ? 'Due now' : `Due in ${span(m)}` })
+    }
+    const have = new Set(out.map((r) => r.id))
+    const rest = pendingToday.filter((x) => !have.has(x.id)).sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] || a.order - b.order)
+    for (const x of rest) out.push({ id: x.id, text: x.text, priority: x.priority, reminder: false, late: false, when: 'No rush' })
+    return out
+  }, [dueReminders, upcoming, pendingToday, nowTick])
+
+  // The header's agenda: today's open tasks. Those with a reminder today go in time order; the rest follow, highest priority first.
+  const agenda = useMemo(() => {
+    const today = todayStr()
+    const rows = pendingToday.map((x) => {
+      const timed = x.reminder && x.reminder.date === today
+      const at = timed ? reminderEventTime(x.reminder).getTime() : null
+      return { id: x.id, text: x.text, priority: x.priority, at, time: timed ? fmtTime(x.reminder.time) : null, late: at != null && at < nowTick, order: x.order }
+    })
+    const timed = rows.filter((r) => r.at != null).sort((a, b) => a.at - b.at)
+    const anytime = rows.filter((r) => r.at == null).sort((a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority] || a.order - b.order)
+    return [...timed, ...anytime]
+  }, [pendingToday, nowTick])
+
   // --- mutations (memoized; used across many cards) ---
   const patch = useCallback((id, fn) => setTasks((prev) => patchItems(prev, new Set([id]), fn)), [setTasks])  // a task, or a subtask's reminder item
   // The only things that change a task's completion: the user checking it (toggle / complete) or unchecking it (toggle).
@@ -1295,7 +1326,7 @@ export default function TodoApp() {
         <UpdateBanner />
 
         {/* Brand */}
-        <div className="animate-fade-in mb-8 flex items-center gap-3">
+        <div className="animate-fade-in mb-6 flex flex-wrap items-center gap-3">
           <AutoDeckIcon size={46} background={false} />
           <div className="leading-none">
             <div className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
@@ -1306,95 +1337,70 @@ export default function TodoApp() {
               Your workflow, on autopilot.
             </div>
           </div>
-        </div>
-
-        {/* Header */}
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div className="animate-fade-in min-w-0">
-            <Clock />
-            <h1 className="mt-1.5 text-4xl font-extrabold tracking-[-0.03em] text-slate-900 sm:text-5xl dark:text-white">
-              {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-            </h1>
-            {total === 0 ? (
-              <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">No tasks yet. Add one to get started.</p>
-            ) : (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <StatChip className="bg-sky-500/10 text-sky-600 dark:text-sky-300">
-                  {pending.length} to do
-                </StatChip>
-                <StatChip className="bg-lime-500/15 text-lime-700 dark:text-lime-300">
-                  {doneCount} done
-                </StatChip>
-                {highPending > 0 && (
-                  <StatChip className="bg-rose-500/10 text-rose-600 dark:text-rose-300">
-                    {highPending} high priority
-                  </StatChip>
-                )}
-                {nextReminder && (
-                  <StatChip className="bg-slate-500/10 text-slate-600 dark:text-slate-300">
-                    <Bell size={11} strokeWidth={2} /> next {nextReminder}
-                  </StatChip>
-                )}
-              </div>
+        <div className="glass ml-auto flex max-w-full items-center gap-0.5 rounded-full p-1 shadow-sm">
+          <IconButton
+            title={!notify ? 'Notifications off. Click to enable'
+              : muted ? 'Notifications muted. Click to unmute'
+              : 'Notifications on. Click to mute'}
+            onClick={requestNotify} active={notify && !muted}
+            className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
+            <BellIcon active={notify && !muted} size={18} />
+            <span className={`absolute right-1 top-1 h-2 w-2 rounded-full ring-2 ring-white transition-colors dark:ring-slate-900 ${
+              notify && !muted ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+            }`} />
+          </IconButton>
+          <IconButton
+            title={soundOn ? 'Sound on — click to mute sounds' : 'Sound off — click to enable sounds'}
+            onClick={() => { const next = !soundOn; soundEnabled = next; setSoundOn(next); if (next) playSfx('add') }}
+            active={soundOn}
+            className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
+            <VolumeIcon on={soundOn} size={18} />
+          </IconButton>
+          <span className="mx-1 h-4 w-px bg-black/[0.07] dark:bg-white/[0.08]" />
+          <div className="relative">
+            <IconButton title="Export tasks" onClick={() => setExportOpen((v) => !v)} active={exportOpen}
+                >
+              <ExportIcon size={18} />
+            </IconButton>
+            {exportOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+                <div className="glass animate-fade-up absolute right-0 top-11 z-50 w-40 overflow-hidden rounded-xl p-1 text-sm">
+                  {[['PDF', exportPDF], ['CSV', exportCSV], ['Word', exportWord], ['JSON (backup)', exportJSON]].map(([label, fn]) => (
+                    <button key={label} disabled={tasks.length === 0}
+                      onClick={() => { fn(); setExportOpen(false) }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-medium transition hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/10">
+                      <Download size={14} strokeWidth={2} /> {label}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
-          {upcoming[0] && <UpNext item={upcoming[0]} nowTick={nowTick} onView={viewTask} onDone={complete} />}
-          <div className="glass flex max-w-full items-center gap-0.5 rounded-full p-1 shadow-sm">
-            <IconButton
-              title={!notify ? 'Notifications off. Click to enable'
-                : muted ? 'Notifications muted. Click to unmute'
-                : 'Notifications on. Click to mute'}
-              onClick={requestNotify} active={notify && !muted}
-              className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
-              <BellIcon active={notify && !muted} size={18} />
-              <span className={`absolute right-1 top-1 h-2 w-2 rounded-full ring-2 ring-white transition-colors dark:ring-slate-900 ${
-                notify && !muted ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-              }`} />
-            </IconButton>
-            <IconButton
-              title={soundOn ? 'Sound on — click to mute sounds' : 'Sound off — click to enable sounds'}
-              onClick={() => { const next = !soundOn; soundEnabled = next; setSoundOn(next); if (next) playSfx('add') }}
-              active={soundOn}
-              className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
-              <VolumeIcon on={soundOn} size={18} />
-            </IconButton>
-            <span className="mx-1 h-4 w-px bg-black/[0.07] dark:bg-white/[0.08]" />
-            <div className="relative">
-              <IconButton title="Export tasks" onClick={() => setExportOpen((v) => !v)} active={exportOpen}
-                  >
-                <ExportIcon size={18} />
-              </IconButton>
-              {exportOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
-                  <div className="glass animate-fade-up absolute right-0 top-11 z-50 w-40 overflow-hidden rounded-xl p-1 text-sm">
-                    {[['PDF', exportPDF], ['CSV', exportCSV], ['Word', exportWord], ['JSON (backup)', exportJSON]].map(([label, fn]) => (
-                      <button key={label} disabled={tasks.length === 0}
-                        onClick={() => { fn(); setExportOpen(false) }}
-                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-medium transition hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/10">
-                        <Download size={14} strokeWidth={2} /> {label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-            <IconButton title="Import tasks from backup" onClick={() => fileRef.current?.click()}
-              >
-              <ImportIcon size={18} />
-            </IconButton>
-            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden"
-              onChange={(e) => { if (e.target.files[0]) importTasks(e.target.files[0]); e.target.value = '' }} />
-            <span className="mx-1 h-4 w-px bg-black/[0.07] dark:bg-white/[0.08]" />
-            <IconButton title="Settings" onClick={() => setSettingsOpen(true)} active={settingsOpen}
-              className="hover:[&_svg]:rotate-45">
-              <Settings size={18} />
-            </IconButton>
-            <IconButton title="Toggle theme" onClick={() => setDark((d) => !d)}
-              className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
-              <ThemeIcon dark={dark} size={18} />
-            </IconButton>
-          </div>
+          <IconButton title="Import tasks from backup" onClick={() => fileRef.current?.click()}
+            >
+            <ImportIcon size={18} />
+          </IconButton>
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden"
+            onChange={(e) => { if (e.target.files[0]) importTasks(e.target.files[0]); e.target.value = '' }} />
+          <span className="mx-1 h-4 w-px bg-black/[0.07] dark:bg-white/[0.08]" />
+          <IconButton title="Settings" onClick={() => setSettingsOpen(true)} active={settingsOpen}
+            className="hover:[&_svg]:rotate-45">
+            <Settings size={18} />
+          </IconButton>
+          <IconButton title="Toggle theme" onClick={() => setDark((d) => !d)}
+            className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
+            <ThemeIcon dark={dark} size={18} />
+          </IconButton>
+        </div>
+        </div>
+
+        {/* Header: the day at a glance */}
+        <header>
+          <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} onFilter={setFilter}
+            pending={pendingToday.length} high={highPending} overdue={dueReminders.length} activity={activity} agenda={agenda} onView={viewTask} onDone={complete}
+            strip={<DeckTop activity={activity} />}
+            lead={<DeckLead list={deckList} total={total} allDone={total > 0 && doneCount === total} onDone={complete} onSnooze={snoozeReminder} onView={viewTask} />} />
         </header>
 
         {settingsOpen && (
@@ -1441,9 +1447,6 @@ export default function TodoApp() {
           <WeekView tasks={tasks} categories={categories} onAdd={addTask} remDefaults={remDefaults} notifyOn={notify && !muted} onFirstReminder={requestNotify} onView={viewTask} onToggle={toggle} onReschedule={reschedule} onDelete={remove} />
         ) : (
         <>
-        <ProgressDashboard pct={pct} done={doneCount} total={total} celebrate={celebrate} onFilter={setFilter}
-          pending={pendingToday.length} high={highPending} overdue={dueReminders.length} next={nextReminder} activity={activity} />
-
         <AddTaskForm onAdd={addTask} onFirstReminder={requestNotify} notifyOn={notify && !muted} remDefaults={remDefaults} categories={categories} />
 
         {upcoming.length > 0 && <UpcomingReminders items={upcoming} nowTick={nowTick} onView={viewTask} onCancel={(id) => editReminder(id, null)} />}
@@ -2464,7 +2467,7 @@ function CountNum({ value }) {
   return v
 }
 
-function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0, overdue = 0, next = null, activity = null, onFilter }) {
+function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0, overdue = 0, activity = null, onFilter, strip = null, lead = null, agenda = [], onView, onDone }) {
   const R = 30, C = 2 * Math.PI * R
   const msg = total === 0 ? 'Add your first task to get going.'
     : celebrate ? 'Everything done. You crushed today.'
@@ -2500,46 +2503,33 @@ function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0,
       {/* two columns on a wide screen: the day on the left, the week on the right */}
       <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-5">
+          {strip}
+          {lead}
+          {/* the day in one line: a small ring and a friendly sentence */}
+          <div className="flex items-center gap-4 px-1">
             <div className="relative shrink-0">
-              <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+              <svg width="56" height="56" viewBox="0 0 80 80" className="-rotate-90" aria-hidden="true">
                 <defs>
-                  <linearGradient id="prog-grad" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#0EA5E9" />
-                    <stop offset="100%" stopColor="#2DD4BF" />
-                  </linearGradient>
+                  <linearGradient id="prog-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#0EA5E9" /><stop offset="100%" stopColor="#2DD4BF" /></linearGradient>
                 </defs>
-                <circle cx="40" cy="40" r={R} strokeWidth="8" className="fill-none stroke-slate-200/70 dark:stroke-white/10" />
-                <circle cx="40" cy="40" r={R} strokeWidth="8" strokeLinecap="round" stroke="url(#prog-grad)"
+                <circle cx="40" cy="40" r={R} strokeWidth="9" className="fill-none stroke-slate-200/70 dark:stroke-white/10" />
+                <circle cx="40" cy="40" r={R} strokeWidth="9" strokeLinecap="round" stroke="url(#prog-grad)"
                   className={`fill-none [transition:stroke-dashoffset_.7s_cubic-bezier(0.32,0.72,0,1)] ${pct === 100 ? 'glow-pulse' : ''}`}
                   strokeDasharray={C} strokeDashoffset={C - (pct / 100) * C} />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                {celebrate
-                  ? <PartyPopper size={24} className="animate-wiggle text-lime-500" />
-                  : <span className="bg-gradient-to-br from-sky-500 to-teal-400 bg-clip-text text-lg font-extrabold tabular-nums text-transparent"><CountNum value={pct} /><span className="text-xs">%</span></span>}
+                {celebrate ? <PartyPopper size={18} className="animate-wiggle text-lime-500" />
+                  : <span className="text-[11px] font-extrabold tabular-nums text-teal-600 dark:text-teal-300"><CountNum value={pct} />%</span>}
               </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold">
-                <span className="text-slate-900 dark:text-white"><CountNum value={done} /></span>
-                <span className="text-slate-400"> / {total} </span>
-                <span className="text-slate-500 dark:text-slate-400">done today</span>
-              </p>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{msg}</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {left > 0 && <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2.5 py-1 text-xs font-semibold text-sky-600 dark:text-sky-300">{left} to go</span>}
-                {next && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    <Bell size={12} className="text-sky-500" /> Next reminder {next}
-                  </span>
-                )}
-              </div>
+            <div className="min-w-0">
+              <p className="text-[15px] font-semibold"><span className="text-slate-900 dark:text-white"><CountNum value={done} /></span><span className="text-slate-400"> / {total} </span><span className="text-slate-500 dark:text-slate-400">done today</span></p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{msg}</p>
             </div>
           </div>
 
           {/* the day at a glance; the first two open the matching list */}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-2.5">
             {tiles.map((t, i) => {
               const Tag = t.go ? 'button' : 'div'
               return (
@@ -2557,54 +2547,94 @@ function ProgressDashboard({ pct, done, total, celebrate, pending = 0, high = 0,
           </div>
         </div>
 
-        {/* the last seven days: a chart with a scale, an average line, and what it adds up to */}
-        {activity && (
-          <div className="flex min-w-0 flex-col rounded-2xl bg-slate-500/[0.07] p-4 dark:bg-white/[0.05]">
-            <div className="mb-3 flex items-baseline justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"><CalendarDays size={13} className="text-teal-500" /> Last 7 days</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-200"><CountNum value={activity.week} /></span><span className="ml-1">completed</span></span>
-            </div>
-            <div className="relative min-h-[9rem] flex-1">
-              {ticks.map((t) => (
-                <div key={t} aria-hidden="true" className="absolute inset-x-0 border-t border-slate-400/15" style={{ bottom: `${(t / top) * 100}%` }}>
-                  <span className="absolute -top-2 left-0 w-5 text-[9px] font-semibold tabular-nums text-slate-400">{t}</span>
-                </div>
-              ))}
-              {activity.avg > 0 && (
-                <div aria-hidden="true" className="absolute left-6 right-0 border-t border-dashed border-teal-500/60" style={{ bottom: `${Math.min(100, (activity.avg / top) * 100)}%` }}>
-                  <span className="absolute -top-4 left-1 rounded bg-teal-500/15 px-1 text-[9px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-300">avg {activity.avg.toFixed(1)}</span>
-                </div>
-              )}
-              {activity.week === 0 && (
-                <p className="absolute inset-0 flex items-center justify-center px-8 text-center text-xs text-slate-400">Finish a task and today's bar will start to fill.</p>
-              )}
-              <div className="absolute inset-y-0 left-6 right-0 flex items-stretch gap-2" role="img" aria-label={`Tasks completed per day: ${activity.days.map((d) => `${d.label} ${d.count}`).join(', ')}`}>
-                {activity.days.map((d, i) => {
-                  const h = d.count ? Math.max(10, (d.count / top) * 100) : 3
-                  return (
-                    <div key={d.ds} title={`${d.today ? 'Today' : d.label}: ${d.count} completed`} className="group relative flex min-w-0 flex-1 flex-col items-center justify-end">
-                      {d.count > 0 && <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[10px] font-bold tabular-nums text-slate-600 transition-transform duration-200 group-hover:-translate-y-0.5 dark:text-slate-300" style={{ bottom: `calc(${h}% + 3px)` }}>{d.count}</span>}
-                      <div style={{ height: `${h}%`, animationDelay: `${i * 45}ms` }}
-                        className={`animate-fade-up w-full max-w-[2.75rem] rounded-t-lg rounded-b-sm transition duration-300 group-hover:brightness-125 ${
-                          d.today ? 'bg-gradient-to-t from-teal-500 to-sky-500 shadow-[0_0_12px_rgba(20,184,166,0.35)]' : d.count ? 'bg-teal-500/50' : 'bg-slate-500/15'}`} />
+        {/* today's agenda: what is coming, hour by hour; the week's numbers sit underneath */}
+        <div className="relative min-w-0">
+        <div className="flex h-full min-w-0 flex-col rounded-2xl bg-slate-500/[0.07] p-4 dark:bg-white/[0.05]">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400"><CalendarDays size={13} className="text-teal-500" /> Today's agenda</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-200">{agenda.length}</span> left</span>
+          </div>
+          <div className="fancy-scroll min-h-[7rem] max-h-[12rem] flex-1 overflow-y-auto pr-1 lg:max-h-[24rem]">
+            {agenda.length === 0 ? (
+              <p className="flex h-full min-h-[7rem] items-center justify-center px-6 text-center text-sm text-slate-400">
+                {total > 0 ? 'Nothing left today. Nice work.' : 'Nothing planned for today yet.'}
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {agenda.map((r, i) => (
+                  <li key={r.id}>
+                    {r.time == null && i > 0 && agenda[i - 1].time != null && (
+                      <div className="mb-1.5 mt-2.5 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Anytime today</div>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <div className={`group/ev flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 transition ${
+                        r.late || r.priority === 'High' ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                        : r.priority === 'Medium' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'bg-slate-500/10 text-slate-600 dark:text-slate-300'}`}>
+                        <button type="button" onClick={() => onView?.(r.id)} className="min-w-0 flex-1 truncate text-left text-sm font-semibold">{r.text}</button>
+                        {r.late && <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide">Late</span>}
+                        {r.time && <span className="shrink-0 text-[11px] font-semibold tabular-nums opacity-75">{r.time}</span>}
+                        <button type="button" onClick={() => onDone?.(r.id)} title="Mark done" aria-label={`Mark ${r.text} done`}
+                          className="shrink-0 rounded-full bg-white/60 p-1 transition hover:bg-white/90 active:scale-90 focus-visible:opacity-100 sm:opacity-0 sm:group-hover/ev:opacity-100 dark:bg-white/10 dark:hover:bg-white/20"><Check size={13} strokeWidth={3} /></button>
+                      </div>
                     </div>
-                  )
-                })}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {/* the last seven days, small: a scale, an average line and a bar per day */}
+          {activity && (
+            <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/10">
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Last 7 days</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-200"><CountNum value={activity.week} /></span><span className="ml-1">completed</span></span>
+              </div>
+              <div className="relative h-20">
+                {ticks.map((t) => (
+                  <div key={t} aria-hidden="true" className="absolute inset-x-0 border-t border-slate-400/15" style={{ bottom: `${(t / top) * 100}%` }}>
+                    <span className="absolute -top-2 left-0 w-5 text-[9px] font-semibold tabular-nums text-slate-400">{t}</span>
+                  </div>
+                ))}
+                {activity.avg > 0 && (
+                  <div aria-hidden="true" className="absolute left-6 right-0 border-t border-dashed border-teal-500/60" style={{ bottom: `${Math.min(100, (activity.avg / top) * 100)}%` }}>
+                    <span className="absolute -top-4 left-1 rounded bg-teal-500/15 px-1 text-[9px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-300">avg {activity.avg.toFixed(1)}</span>
+                  </div>
+                )}
+                {activity.week === 0 && (
+                  <p className="absolute inset-0 flex items-center justify-center px-8 text-center text-xs text-slate-400">Finish a task and today's bar will start to fill.</p>
+                )}
+                <div className="absolute inset-y-0 left-6 right-0 flex items-stretch gap-2" role="img" aria-label={`Tasks completed per day: ${activity.days.map((d) => `${d.label} ${d.count}`).join(', ')}`}>
+                  {activity.days.map((d, i) => {
+                    const h = d.count ? Math.max(10, (d.count / top) * 100) : 3
+                    return (
+                      <div key={d.ds} title={`${d.today ? 'Today' : d.label}: ${d.count} completed`} className="group relative flex min-w-0 flex-1 flex-col items-center justify-end">
+                        {d.count > 0 && <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[10px] font-bold tabular-nums text-slate-600 transition-transform duration-200 group-hover:-translate-y-0.5 dark:text-slate-300" style={{ bottom: `calc(${h}% + 3px)` }}>{d.count}</span>}
+                        <div style={{ height: `${h}%`, animationDelay: `${i * 45}ms` }}
+                          className={`animate-fade-up w-full max-w-[2.75rem] rounded-t-lg rounded-b-sm transition duration-300 group-hover:brightness-125 ${
+                            d.today ? 'bg-gradient-to-t from-teal-500 to-sky-500 shadow-[0_0_12px_rgba(20,184,166,0.35)]' : d.count ? 'bg-teal-500/50' : 'bg-slate-500/15'}`} />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="mt-1 flex gap-2 pl-6">
+                {activity.days.map((d) => <span key={d.ds} className={`min-w-0 flex-1 text-center text-[10px] font-semibold ${d.today ? 'text-teal-600 dark:text-teal-300' : 'text-slate-400'}`}>{d.today ? 'Today' : d.label}</span>)}
               </div>
             </div>
-            <div className="mt-1.5 flex gap-2">
-              {activity.days.map((d) => <span key={d.ds} className={`min-w-0 flex-1 text-center text-[10px] font-semibold ${d.today ? 'text-teal-600 dark:text-teal-300' : 'text-slate-400'}`}>{d.today ? 'Today' : d.label}</span>)}
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 border-t border-black/5 pt-3 dark:border-white/10">
+          )}
+          {activity && (
+            <div className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-black/5 pt-2.5 dark:border-white/10">
               {insights.map(([k, v, tone]) => (
-                <div key={k} className="min-w-0">
-                  <div className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-400">{k}</div>
-                  <div className={`mt-0.5 truncate text-sm font-bold tabular-nums text-slate-700 dark:text-slate-200 ${tone}`}>{v}</div>
+                <div key={k} className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-400">{k}</span>
+                  <span className={`truncate text-xs font-bold tabular-nums text-slate-700 dark:text-slate-200 ${tone}`}>{v}</span>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        </div>
       </div>
       </div>
     </div>
@@ -3472,23 +3502,66 @@ function ReminderBanner({ items, nowTick, onDone, onSnooze, onDismiss, onView, o
 }
 
 /* --------------------------- Upcoming reminders ---------------------------- */
-// "Up next": the soonest reminder still to come, with a live countdown and a one-click Done. Fills the wide header; hidden on small screens.
-function UpNext({ item, nowTick, onView, onDone }) {
-  const at = nextReminderAt(item.reminder, nowTick)
-  const mins = Math.max(0, Math.ceil((at - nowTick) / 60000))
-  const when = mins < 1 ? 'now' : mins < 60 ? `in ${mins} min` : mins < 1440 ? `in ${Math.floor(mins / 60)} h ${mins % 60 ? `${mins % 60} min` : ''}`.trim() : `in ${Math.floor(mins / 1440)} d`
-  const time = new Date(at)
-  const clock = fmtTime(`${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`)
+// The header deck: the date, streak and a quick-add box on top, then the next task (with Done / Snooze / Skip).
+function DeckTop({ activity }) {
   return (
-    <div className="glass animate-fade-in mx-auto hidden min-w-0 max-w-md flex-1 items-center gap-3 rounded-2xl px-4 py-3 shadow-sm lg:flex">
-      <PriorityIcon p={item.priority} size={22} />
-      <button onClick={() => onView(item.id)} className="min-w-0 flex-1 text-left">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-teal-500">Up next</div>
-        <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{item.text}</div>
-        <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{when} · {clock}</div>
-      </button>
-      <button onClick={() => onDone(item.id)} title="Mark done" aria-label="Mark up-next task done"
-        className="rounded-full bg-teal-500/15 p-2 text-teal-600 transition hover:bg-teal-500/25 dark:text-teal-300"><Check size={16} /></button>
+    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <Clock />
+          <span title="Days in a row with at least one task finished"
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${activity?.streak ? 'bg-orange-500/15 text-orange-600 dark:text-orange-300' : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}`}>
+            <Flame size={13} /> {activity?.streak ? `${activity.streak} day${activity.streak === 1 ? '' : 's'} in a row` : 'No streak yet'}
+          </span>
+        </div>
+        <h1 className="mt-2 text-2xl font-extrabold leading-none tracking-[-0.03em] text-slate-900 sm:text-3xl dark:text-white">
+          {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+        </h1>
+      </div>
+    </div>
+  )
+}
+
+/** The "Up next" card: the one task to do now, with Done, Snooze (only if it has a reminder) and Skip (try the next one). */
+function DeckLead({ list, total, allDone, onDone, onSnooze, onView }) {
+  const [skipped, setSkipped] = useState([])
+  const live = list.filter((r) => !skipped.includes(r.id))
+  const item = (live.length ? live : list)[0] || null
+  const late = !!item?.late
+  const tone = !item ? (allDone ? 'bg-lime-500/10 ring-lime-500/25 text-lime-700 dark:text-lime-300' : 'bg-slate-500/10 ring-slate-500/20 text-slate-600 dark:text-slate-300')
+    : late ? 'bg-rose-500/10 ring-rose-500/25 text-rose-700 dark:text-rose-300' : 'bg-sky-500/10 ring-sky-500/25 text-sky-700 dark:text-sky-300'
+  return (
+    <div className={`animate-fade-in rounded-2xl p-3.5 ring-1 transition-colors duration-300 ${tone}`}>
+      <div className="text-[10px] font-bold uppercase tracking-wider opacity-80">{!item ? (allDone ? 'All done' : 'Up next') : late ? 'Running late' : 'Up next'}</div>
+      {!item ? (
+        <p className="mt-1 text-sm font-semibold">{allDone ? 'You cleared today. Nice work.' : total === 0 ? 'Nothing planned yet. Add your first task below.' : 'Nothing waiting.'}</p>
+      ) : (
+        <>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <button type="button" onClick={() => onView(item.id)} className="min-w-0 max-w-full truncate text-left text-lg font-bold leading-tight">{item.text}</button>
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-bold dark:bg-white/10"><PriorityIcon p={item.priority} size={11} /> {item.priority}</span>
+            <span className="text-xs font-medium tabular-nums opacity-90">{item.when}</span>
+          </div>
+          <div className="mt-2.5 flex items-center gap-1.5">
+            <button type="button" onClick={() => onDone(item.id)}
+              className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl bg-sky-600 px-4 text-sm font-bold text-white transition hover:brightness-110 active:scale-[0.97] dark:bg-sky-500">
+              <Check size={15} strokeWidth={3} /> Done
+            </button>
+            {item.reminder && (
+              <button type="button" onClick={() => onSnooze(item.id, 10)} title="Remind me again in 10 minutes"
+                className="flex h-8 items-center gap-1 rounded-xl bg-white/60 px-2.5 text-xs font-semibold transition hover:bg-white/80 active:scale-95 dark:bg-white/10 dark:hover:bg-white/15">
+                <Clock3 size={13} /> Snooze
+              </button>
+            )}
+            {list.length > 1 && (
+              <button type="button" onClick={() => setSkipped(live.length > 1 ? [...skipped, item.id] : [])} title="Show the next task instead"
+                className="flex h-8 items-center gap-1 rounded-xl bg-white/60 px-2.5 text-xs font-semibold transition hover:bg-white/80 active:scale-95 dark:bg-white/10 dark:hover:bg-white/15">
+                <SkipForward size={13} /> Skip
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
