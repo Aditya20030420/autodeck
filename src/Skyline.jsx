@@ -18,8 +18,42 @@ const NEON = ['#f472b6', '#22d3ee', '#a3e635', '#fb923c']  // rooftop sign colou
 const PEOPLE = ['#e2e8f0', '#f472b6', '#fbbf24', '#60a5fa', '#34d399']
 const CONFETTI = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6']  // confetti and balloons
 const RAINBOW = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#38bdf8', '#6366f1', '#a855f7']
-const FWRGB = ['251,191,36', '244,114,182', '34,211,238', '163,230,53']  // firework colours as r,g,b (the fifth is your accent colour)
-const EMOJI = ['🎉', '🥳', '⭐', '❤️', '✨', '🎊', '😀', '🚀', '🏆', '💯']
+// The firework shapes and their light colours (r,g,b). Each burst expands straight into one of these.
+const SHAPES = ['heart', 'star', 'trophy', 'check', 'rocket']
+const SHAPE_RGB = { heart: '255,105,150', star: '255,205,70', trophy: '255,170,60', check: '80,220,130', rocket: '120,225,255' }
+const FW_EXP = 0.85, FW_HOLD = 1.6, FW_FALL = 1.5  // seconds: expand into the shape, hold and twinkle, fall and fade
+const back = (u) => 1 + 2.1 * (u - 1) ** 3 + 1.1 * (u - 1) ** 2  // eases out with a small overshoot
+// draws a shape into a unit box of size S (the light will be sampled from it)
+const shapePath = (c, k, S) => {
+  const m = S / 2
+  c.beginPath()
+  if (k === 'heart') {
+    for (let i = 0; i <= 80; i++) {
+      const t = (i / 80) * 6.2832, x = 16 * Math.sin(t) ** 3, y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))
+      const px = m + x * S * 0.027, py = m + y * S * 0.027 + S * 0.02
+      i ? c.lineTo(px, py) : c.moveTo(px, py)
+    }
+    c.closePath()
+  } else if (k === 'star') {
+    for (let i = 0; i < 10; i++) {
+      const a = -1.5708 + (i * Math.PI) / 5, r = (i % 2 ? 0.42 : 1) * S * 0.46
+      i ? c.lineTo(m + Math.cos(a) * r, m + Math.sin(a) * r) : c.moveTo(m + Math.cos(a) * r, m + Math.sin(a) * r)
+    }
+    c.closePath()
+  } else if (k === 'trophy') {
+    c.moveTo(m - S * 0.3, m - S * 0.4); c.lineTo(m + S * 0.3, m - S * 0.4); c.lineTo(m + S * 0.24, m + S * 0.06)
+    c.quadraticCurveTo(m + S * 0.18, m + S * 0.2, m + S * 0.06, m + S * 0.22); c.lineTo(m + S * 0.06, m + S * 0.32)
+    c.lineTo(m + S * 0.22, m + S * 0.36); c.lineTo(m + S * 0.22, m + S * 0.44); c.lineTo(m - S * 0.22, m + S * 0.44)
+    c.lineTo(m - S * 0.22, m + S * 0.36); c.lineTo(m - S * 0.06, m + S * 0.32); c.lineTo(m - S * 0.06, m + S * 0.22)
+    c.quadraticCurveTo(m - S * 0.18, m + S * 0.2, m - S * 0.24, m + S * 0.06); c.closePath()
+  } else if (k === 'rocket') {  // pointed nose, slim body, swept fins and a flame (drawn upright; tilted when sampled)
+    c.moveTo(m, S * 0.02); c.bezierCurveTo(m + S * 0.16, S * 0.16, m + S * 0.14, S * 0.5, m + S * 0.12, S * 0.66)
+    c.lineTo(m - S * 0.12, S * 0.66); c.bezierCurveTo(m - S * 0.14, S * 0.5, m - S * 0.16, S * 0.16, m, S * 0.02); c.closePath()
+    c.moveTo(m + S * 0.12, S * 0.46); c.lineTo(m + S * 0.3, S * 0.76); c.lineTo(m + S * 0.12, S * 0.66); c.closePath()
+    c.moveTo(m - S * 0.12, S * 0.46); c.lineTo(m - S * 0.3, S * 0.76); c.lineTo(m - S * 0.12, S * 0.66); c.closePath()
+    c.moveTo(m - S * 0.08, S * 0.68); c.lineTo(m + S * 0.08, S * 0.68); c.lineTo(m, S * 0.96); c.closePath()
+  }
+}
 const LANTERN = ['#fb923c', '#f97316', '#ef4444', '#fbbf24']
 const FIREWORK = ['#fbbf24', '#f472b6', '#22d3ee', '#a3e635', '#c084fc']
 const ROAD = 14  // height of the road strip along the bottom
@@ -103,7 +137,30 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       return { i, dir: i % 2 ? -1 : 1, bus, suv, len: bus ? 26 : suv ? 17 : 15, base, v: base, x: 0 }
     })
     const people = Array.from({ length: 16 }, (_, i) => ({ i, dir: i % 3 ? 1 : -1, spd: 6 + rnd(i + 1900) * 8, x: 0, ph: rnd(i + 1950) * 6.3 }))
-    const fw = { rockets: [], parts: [], emojis: [], flashes: [], lanterns: [], until: 0, next: 0, nextL: 0 }
+    const fw = { rockets: [], bursts: [], flashes: [], lanterns: [], bag: [], until: 0, next: 0, nextL: 0 }
+    // the light points of each shape, sampled once from its outline
+    const shapeCache = {}
+    const shapePts = (kind) => shapeCache[kind] ||= (() => {
+      const S = 96, o = document.createElement('canvas'); o.width = o.height = S
+      const c = o.getContext('2d'); c.fillStyle = c.strokeStyle = '#fff'
+      if (kind === 'check') { c.lineWidth = 13; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(S * 0.2, S * 0.54); c.lineTo(S * 0.42, S * 0.76); c.lineTo(S * 0.8, S * 0.26); c.stroke() }
+      else {
+        if (kind === 'rocket') { c.save(); c.translate(S / 2, S / 2); c.rotate(Math.PI / 4); c.translate(-S / 2, -S / 2) }  // tilted, like the rocket emoji
+        shapePath(c, kind, S); c.fill()
+      }
+      if (kind === 'trophy') { c.lineWidth = 6; c.beginPath(); c.arc(S * 0.2, S * 0.3, S * 0.1, 0.5 * Math.PI, 1.5 * Math.PI); c.stroke(); c.beginPath(); c.arc(S * 0.8, S * 0.3, S * 0.1, 1.5 * Math.PI, 0.5 * Math.PI); c.stroke() }
+      if (kind === 'rocket') { c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(S * 0.5, S * 0.32, S * 0.06, 0, 6.3); c.fill(); c.restore() }  // the window
+      const d = c.getImageData(0, 0, S, S).data, a = []
+      for (let y = 0; y < S; y += 4) for (let x = 0; x < S; x += 4) if (d[(y * S + x) * 4 + 3] > 128) a.push([(x / S - 0.5) * 2, (y / S - 0.5) * 2])
+      return a
+    })()
+    // where one light of a burst is at a given age: it flies straight out from the burst point to its place in the shape, holds, then falls
+    const posOf = (b, p, age, o) => {
+      const e = back(Math.min(1, Math.max(0, (age - p.dl) / FW_EXP)))
+      o[0] = b.x + p.tx * b.R * e; o[1] = b.y + p.ty * b.R * e; o[2] = 1
+      if (age > FW_EXP + FW_HOLD) { const f = (age - FW_EXP - FW_HOLD) / FW_FALL; o[1] += f * f * 90; o[0] += Math.sin(p.ph) * f * 12; o[2] = Math.max(0, 1 - f) }
+    }
+    const pa = [0, 0, 0], pb = [0, 0, 0]
     const spr = {}  // glow sprites by colour
     const sp = (rgb) => (spr[rgb] ||= glowSprite(rgb))
     const fest = { start: 0, until: 0, conf: [], balloons: [], acc: 0, nextB: 0 }  // the daytime celebration: rainbow, balloons, confetti
@@ -322,12 +379,12 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           for (let i = 0; i < 7; i++) { g.strokeStyle = RAINBOW[i]; g.globalAlpha = 0.42 * ra; g.beginPath(); g.arc(W * 0.5, H - ROAD, R - i * bw, Math.PI, 0); g.stroke() }
         }
       }
-      // fireworks (behind the buildings): smooth glowing bursts with trails, a soft flash, and a ring of emoji
-      if (!still && (t < fw.until || fw.rockets.length || fw.parts.length || fw.emojis.length || fw.flashes.length)) {
+      // fireworks (behind the buildings): each burst expands straight into a shape (heart, star, trophy, check, rocket)
+      if (!still && (t < fw.until || fw.rockets.length || fw.bursts.length || fw.flashes.length)) {
         const sec = Math.min(dt, 100) / 1000, nf = night
         if (t < fw.until && t >= fw.next && night > 0.35) {
-          fw.rockets.push({ x: W * (0.12 + 0.76 * Math.random()), y: H - ROAD, ty: H * (0.12 + 0.28 * Math.random()), hist: [] })
-          fw.next = t + 450 + Math.random() * 500
+          fw.rockets.push({ x: W * (0.15 + 0.7 * Math.random()), y: H - ROAD, ty: H * (0.2 + 0.22 * Math.random()), hist: [] })
+          fw.next = t + 700 + Math.random() * 600
         }
         g.globalCompositeOperation = 'lighter'
         g.lineCap = 'round'
@@ -337,20 +394,14 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           r.y -= Math.max(70, (r.y - r.ty) * 3.4) * sec  // it slows down smoothly as it nears the top
           r.x += Math.sin(t / 90 + i) * 0.25
           g.strokeStyle = '#fde68a'; g.lineWidth = 1.5
-          for (let k = 2; k < r.hist.length; k += 2) { g.globalAlpha = 0.7 * nf * (k / r.hist.length); g.beginPath(); g.moveTo(r.hist[k - 2], r.hist[k - 1]); g.lineTo(r.hist[k], r.hist[k + 1] ?? r.y); g.stroke() }
+          for (let k = 2; k < r.hist.length; k += 2) { g.globalAlpha = 0.7 * nf * (k / r.hist.length); g.beginPath(); g.moveTo(r.hist[k - 2], r.hist[k - 1]); g.lineTo(r.hist[k], r.hist[k + 1]); g.stroke() }
           g.globalAlpha = nf; g.drawImage(sp('253,230,138'), r.x - 4, r.y - 4, 8, 8)
-          if (r.y <= r.ty + 2) {  // burst: two rings of sparks, a flash, and emoji
-            const rgb = Math.random() < 0.2 ? ac.current : FWRGB[Math.floor(Math.random() * 4)]
-            for (let k = 0; k < 64; k++) {
-              const ang = (k / 64) * 6.283 + Math.random() * 0.1, spd = 120 + (k % 2) * 45 + Math.random() * 25
-              fw.parts.push({ x: r.x, y: r.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 1, dec: 0.5 + Math.random() * 0.25, rgb, hist: [] })
-            }
-            fw.flashes.push({ x: r.x, y: r.y, age: 0, rgb })
-            const em = EMOJI[Math.floor(Math.random() * EMOJI.length)]
-            for (let k = 0; k < 9; k++) {
-              const ang = (k / 9) * 6.283 + 0.3, spd = 90 + Math.random() * 25
-              fw.emojis.push({ x: r.x, y: r.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 1, dec: 0.4 + Math.random() * 0.08, ch: em })
-            }
+          if (r.y <= r.ty + 2) {  // burst: the lights start expanding into the next shape at once
+            if (!fw.bag.length) fw.bag = [...SHAPES].sort(() => Math.random() - 0.5)
+            const kind = fw.bag.pop()
+            fw.bursts.push({ x: r.x, y: r.y, age: 0, rgb: SHAPE_RGB[kind], R: Math.max(70, Math.min(130, Math.min(W, H) * 0.16)), held: 0,
+              pts: shapePts(kind).map((q) => ({ tx: q[0], ty: q[1], ph: Math.random() * 6.3, sz: 0.7 + Math.random() * 0.6, dl: Math.random() * 0.06 })) })
+            fw.flashes.push({ x: r.x, y: r.y, age: 0, rgb: SHAPE_RGB[kind] })
             fw.rockets.splice(i, 1)
           }
         }
@@ -360,27 +411,23 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           const sz = 120 + f.age * 260; g.globalAlpha = 0.5 * (1 - f.age / 0.35) * nf
           g.drawImage(sp(f.rgb), f.x - sz / 2, f.y - sz / 2, sz, sz)
         }
-        for (let i = fw.parts.length - 1; i >= 0; i--) {
-          const q = fw.parts[i]
-          q.hist.push(q.x, q.y); if (q.hist.length > 12) q.hist.splice(0, 2)
-          const drag = Math.exp(-1.7 * sec)
-          q.vx *= drag; q.vy = q.vy * drag + 38 * sec; q.x += q.vx * sec; q.y += q.vy * sec; q.life -= q.dec * sec
-          if (q.life <= 0) { fw.parts.splice(i, 1); continue }
-          g.strokeStyle = `rgb(${q.rgb})`; g.lineWidth = 1.2
-          for (let k = 2; k < q.hist.length; k += 2) { g.globalAlpha = 0.8 * q.life * nf * (k / q.hist.length); g.beginPath(); g.moveTo(q.hist[k - 2], q.hist[k - 1]); g.lineTo(q.hist[k], q.hist[k + 1] ?? q.y); g.stroke() }
-          const sz = 6 + 8 * q.life; g.globalAlpha = Math.min(1, q.life * q.life * 1.4) * nf
-          g.drawImage(sp(q.rgb), q.x - sz / 2, q.y - sz / 2, sz, sz)
+        for (let i = fw.bursts.length - 1; i >= 0; i--) {
+          const b = fw.bursts[i]; b.age += sec
+          if (b.age > FW_EXP + FW_HOLD + FW_FALL) { fw.bursts.splice(i, 1); continue }
+          const held = b.age > FW_EXP && b.age < FW_EXP + FW_HOLD + 0.3
+          if (b.age > 0.5 && held) { const sz = b.R * 2.9; g.globalAlpha = 0.12 * nf; g.drawImage(sp(b.rgb), b.x - sz / 2, b.y - sz / 2, sz, sz) }  // a faint glow behind the shape
+          g.strokeStyle = `rgb(${b.rgb})`; g.lineWidth = 1.1
+          for (const p of b.pts) {
+            posOf(b, p, b.age, pa)
+            if (pa[2] <= 0.01) continue
+            posOf(b, p, Math.max(0, b.age - 0.05), pb)
+            g.globalAlpha = 0.55 * pa[2] * nf; g.beginPath(); g.moveTo(pb[0], pb[1]); g.lineTo(pa[0], pa[1]); g.stroke()  // a short trail
+            const tw = held ? 0.75 + 0.25 * Math.sin(t / 180 + p.ph * 3) : 1, sz = 7 + 4 * p.sz
+            g.globalAlpha = pa[2] * tw * nf; g.drawImage(sp(b.rgb), pa[0] - sz / 2, pa[1] - sz / 2, sz, sz)
+            g.globalAlpha = pa[2] * tw * 0.9 * nf; g.fillStyle = '#fff'; g.fillRect(pa[0] - 0.8, pa[1] - 0.8, 1.6, 1.6)
+          }
         }
         g.globalCompositeOperation = 'source-over'
-        g.textAlign = 'center'; g.textBaseline = 'middle'
-        for (let i = fw.emojis.length - 1; i >= 0; i--) {  // emoji fly out of each burst, grow a little, and fade
-          const e = fw.emojis[i], drag = Math.exp(-1.3 * sec)
-          e.vx *= drag; e.vy = e.vy * drag + 22 * sec; e.x += e.vx * sec; e.y += e.vy * sec; e.life -= e.dec * sec
-          if (e.life <= 0) { fw.emojis.splice(i, 1); continue }
-          g.globalAlpha = Math.min(1, e.life * 2.2) * nf
-          g.font = `${(12 + 12 * ss((1 - e.life) * 2.5)).toFixed(1)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`
-          g.fillText(e.ch, e.x, e.y)
-        }
       }
 
       // --- city ---
