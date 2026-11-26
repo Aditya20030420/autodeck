@@ -56,7 +56,7 @@ test('legacy reminders are upgraded, unusable ones dropped', () => {
   assert.equal(migrateReminder(rem({ snoozeUntil: 123 })).snoozeUntil, 123)  // a snooze survives a restart
 })
 
-test('day rollover: completed tasks stay, unfinished roll to today, a completed repeating task gets a separate next occurrence', () => {
+test('day rollover: completed tasks stay, unfinished roll to today, a completed repeating task gets no next copy', () => {
   const out = normalizeForToday([
     task({ text: 'old done', done: true, day: day(-3) }),
     task({ text: 'old open', day: day(-3) }),
@@ -67,10 +67,8 @@ test('day rollover: completed tasks stay, unfinished roll to today, a completed 
   assert.equal(by('old done').done, true); assert.equal(by('old done').day, day(-3))
   assert.equal(by('old open').day, day(0))
   const daily = out.filter((x) => x.text === 'daily')
-  assert.equal(daily.length, 2)
-  const orig = daily.find((x) => x.done), next = daily.find((x) => !x.done)
-  assert.equal(orig.day, day(-1)); assert.equal(orig.reminder.lastAlert, 5)            // the completed one is history, untouched
-  assert.equal(next.day, day(0)); assert.equal(next.reminder.date, day(0)); assert.equal(next.reminder.lastAlert, null)
+  assert.equal(daily.length, 1)                                                          // ticking it is final: no next copy
+  assert.equal(daily[0].done, true); assert.equal(daily[0].day, day(-1)); assert.equal(daily[0].reminder.lastAlert, 5)  // history, untouched
   assert.equal(by('future').day, day(3))
 })
 
@@ -150,6 +148,6 @@ test('Android alarms: one-off, repeating, finished, snoozed', () => {
   assert.ok(at(task({ reminder: rem({ time: hm(30), repeat: 10 }) })).length > 1)
   assert.deepEqual(at(task({ reminder: rem({ time: hm(-30), snoozeUntil: now + 120000 }) })), [now + 120000])
   assert.equal(at(task({ reminder: rem({ time: hm(-30), snoozeUntil: 8640000000000000 }) })).length, 0)
-  const daily = at(task({ recur: 'daily', done: true, reminder: rem({ time: '10:00' }) }))
-  assert.ok(daily.length >= 5 && daily.every((t) => t > now), 'a finished repeating task still rings on the coming days')
+  assert.equal(at(task({ recur: 'daily', done: true, reminder: rem({ time: '10:00' }) })).length, 0, 'a finished repeating task does not ring again')
+  assert.ok(at(task({ recur: 'daily', reminder: rem({ time: '10:00' }) })).length >= 5, 'an unfinished one still rings on the coming days')
 })

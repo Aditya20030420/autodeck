@@ -48,8 +48,8 @@ export function alertTimes(task, now) {
   }
 
   // A recurring task comes back on its matching days, even if the app isn't opened in between.
-  // (once a completed repeating task has spawned its next occurrence, that new task carries the future alarms)
-  if (task.recur && !task.spawned) {
+  // (a completed repeating task does not come back, so it has no future alarms)
+  if (task.recur && !task.spawned && !task.done) {
     const anchorDow = new Date(`${task.day}T00:00`).getDay()
     const day = new Date(now)
     day.setHours(0, 0, 0, 0)
@@ -96,8 +96,7 @@ async function syncOnce(tasks, enabled) {
     const now = Date.now()
     const list = []
     for (const t of tasks) {
-      // a finished recurring task still needs its alarms for the coming days (alertTimes skips the finished one itself)
-      if (!t.reminder || (t.done && !t.recur)) continue
+      if (!t.reminder || t.done) continue  // a finished task has no alarms, repeating or not
       alertTimes(t, now).forEach((at, k) => list.push({
         id: notificationId(t.id, k),
         title: `${t.priority === 'High' ? '🔴 ' : ''}Reminder · ${t.priority} priority`,

@@ -344,36 +344,14 @@ function normSub(st, task, t) {
 /* Tasks as read from storage: known fields only, and old-style reminders upgraded, so the first screen can't crash on them. */
 const reviveTasks = (v) => sanitizeImported(Array.isArray(v) ? v : []).map((x) => ({ ...x, reminder: migrateReminder(x.reminder) }))
 
-/** The next occurrence of a completed repeating task, as a brand-new pending task. Its id comes from the series and the date, so
-    creating it twice (two windows, a restart) can never produce two. The completed original is not touched. */
-function nextOccurrenceOf(x, today) {
-  const next = nextOccurrence(x.recur, new Date(), new Date(`${x.day}T00:00`).getDay())
-  const root = x.series || String(x.id).split('@')[0]
-  const { completedAt, spawned, updatedAt, ...rest } = x  // eslint-disable-line no-unused-vars
-  const moved = (r) => (r ? { ...r, date: next, lastAlert: null, snoozeUntil: null } : r)
-  return {
-    ...rest, id: `${root}@${next}`, series: root, done: false, day: next, createdAt: Date.now(), reminder: moved(x.reminder),
-    subtasks: (x.subtasks || []).map((st) => ({ ...st, id: `${String(st.id).split('@')[0]}@${next}`, done: false,
-      ...(st.recur ? { day: next } : {}), ...(st.reminder ? { reminder: moved(st.reminder) } : {}) })),
-  }
-}
-
-/** The daily rollover. A COMPLETED task is never changed here: not archived, not moved, not reset. A completed repeating task only
-    gets its next occurrence created (once, as a separate pending task). Unfinished tasks roll forward as before. Tasks that need
-    no change are returned as the very same objects. */
+/** The daily rollover. A COMPLETED task is never changed here: not archived, not moved, not reset, and a completed repeating task
+    does NOT get a next copy (ticking it is final). Unfinished tasks roll forward as before. Tasks that need no change are
+    returned as the very same objects. */
 function normalizeForToday(tasks) {
   const t = todayStr()
-  const ids = new Set(tasks.map((x) => x.id))
   const out = []
   tasks.forEach((x, i) => {
-    if (x.done) {
-      if (x.recur && !x.spawned && x.day < t) {
-        out.push({ ...x, spawned: true })
-        const succ = nextOccurrenceOf(x, t)
-        if (!ids.has(succ.id)) { out.push(succ); ids.add(succ.id) }
-      } else out.push(x)
-      return
-    }
+    if (x.done) { out.push(x); return }
     let y = x
     if (typeof y.reminder === 'string') y = { ...y, reminder: migrateReminder(y.reminder) }  // an old-style reminder
     if (!Array.isArray(y.subtasks)) y = { ...y, subtasks: [] }
@@ -806,8 +784,7 @@ export default function TodoApp() {
   syncRef.current.tasks = tasks
   syncRef.current.archive = archive
   const items = useMemo(() => reminderItems(tasks), [tasks])  // every reminder: the tasks' own and their subtasks'
-  // The daily rollover: unfinished tasks move on, a completed repeating task gets its next occurrence. Completed tasks are never
-  // archived, moved or reset by it.
+  // The daily rollover: unfinished tasks move on. Completed tasks are never archived, moved, reset or copied by it.
   // (Applied to the LATEST state, never to an older snapshot: an update that arrived from another window meanwhile must not be replaced
   // by stale copies and then stamped as newer than it.)
   useEffect(() => { setTasks((prev) => normalizeForToday(prev)) }, [setTasks, today])

@@ -1,5 +1,5 @@
 // The daily rollover, with a fake clock: a COMPLETED task must never be archived, moved or reset by a new day, whatever the day,
-// and a repeating task gets its next occurrence as a separate pending task (the completed original stays as it was).
+// and a completed repeating task does not get a next copy.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -58,63 +58,28 @@ test('nothing changes when there is nothing to do (same objects, so nothing is r
   assert.deepEqual(out, list); out.forEach((x, i) => assert.equal(x, list[i]))
 })
 
-test('daily: the next occurrence is a separate pending task, the completed one is left exactly as it was', () => {
-  const out = run('2026-11-21T08:00')
-  const orig = find(out, 'daily'), next = find(out, 'daily@2026-11-21')
-  assert.equal(orig.done, true); assert.equal(orig.day, '2026-11-20'); assert.equal(orig.spawned, true)
-  assert.ok(next); assert.equal(next.done, false); assert.equal(next.day, '2026-11-21'); assert.equal(next.series, 'daily'); assert.equal(next.text, 'daily')
-  assert.equal(next.completedAt, undefined); assert.equal(next.spawned, undefined)
-})
-test('weekdays: completed on Friday, the next occurrence is Monday (nothing on Saturday or Sunday)', () => {
-  assert.equal(find(run('2026-11-21T08:00'), 'weekdays@2026-11-23').day, '2026-11-23')
-  assert.equal(find(run('2026-11-22T08:00'), 'weekdays@2026-11-23').done, false)
-  const mon = find(run('2026-11-23T08:00'), 'weekdays@2026-11-23')
-  assert.equal(mon.day, '2026-11-23'); assert.equal(mon.done, false)
-})
-test('weekly: completed on Friday, the next occurrence is the Friday a week later', () => {
-  const out = run('2026-11-22T08:00')
-  assert.equal(find(out, 'weekly@2026-11-27').day, '2026-11-27'); assert.equal(find(out, 'weekly').done, true)
-})
-test('the next occurrence is created once, however often the rollover runs (restarts, two windows)', () => {
+for (const [label, iso] of OPENINGS) {
+  test(`opened on ${label}: a completed repeating task creates no next copy`, () => {
+    const before = stored()
+    const out = run(iso)
+    assert.equal(out.length, before.length, 'no task was added')
+    for (const id of ['daily', 'weekdays', 'weekly']) {
+      assert.equal(out.filter((x) => x.text === id).length, 1, `${id} appears once`)
+      assert.equal(find(out, id).done, true)
+      assert.equal(find(out, id).spawned, undefined)
+    }
+    assert.ok(!out.some((x) => String(x.id).includes('@') || x.series), 'no occurrence ids or series')
+  })
+}
+test('running the rollover again and again still adds nothing', () => {
   at('2026-11-21T08:00')
-  const once = normalizeForToday(stored()); const twice = normalizeForToday(once); const thrice = normalizeForToday(twice)
-  for (const out of [once, twice, thrice]) assert.equal(out.filter((x) => x.series === 'daily').length, 1)
-  assert.equal(thrice.length, once.length)
-  // two windows each run it from the same starting point: the same id, so merging them can't make two
-  const a = normalizeForToday(stored()), b = normalizeForToday(stored())
-  assert.equal(find(a, 'daily@2026-11-21').id, find(b, 'daily@2026-11-21').id)
+  const once = normalizeForToday(stored()); const twice = normalizeForToday(once)
+  assert.equal(once.length, stored().length); assert.equal(twice.length, once.length)
+  twice.forEach((x, i) => assert.equal(x, once[i]))
 })
-test('a repeating task with a reminder and steps: the next occurrence carries them, fresh', () => {
-  at('2026-11-21T08:00')
-  const t = mk('gym', { recur: 'daily', reminder: { ...timer, snoozeUntil: 5 }, subtasks: [{ id: 'st1', text: 'warm up', done: true, reminder: { ...timer } }] })
-  const out = normalizeForToday([t]); const n = find(out, 'gym@2026-11-21')
-  assert.deepEqual(n.reminder, { date: '2026-11-21', time: '09:00', lead: 0, repeat: 0, lastAlert: null, snoozeUntil: null })
-  assert.equal(n.subtasks[0].done, false); assert.notEqual(n.subtasks[0].id, 'st1'); assert.equal(n.subtasks[0].reminder.date, '2026-11-21')
-  const o = find(out, 'gym'); assert.equal(o.done, true); assert.equal(o.subtasks[0].done, true); assert.equal(o.reminder.snoozeUntil, 5)
-})
-
-test('completing a new occurrence does not touch the earlier ones, and the series carries on day after day', () => {
-  // Fri 20: completed. Sat 21: next created. Mon 23 (weekdays): that one is completed. Tue 24: the next one appears.
-  at('2026-11-21T08:00'); let list = normalizeForToday([mk('exercise', { recur: 'weekdays' })])
-  const friday = find(list, 'exercise')
-  at('2026-11-23T08:00'); list = normalizeForToday(list)
-  list = list.map((x) => (x.id === 'exercise@2026-11-23' ? markDone(x, new RealDate('2026-11-23T18:00').getTime()) : x))
-  assert.equal(find(list, 'exercise'), find(list, 'exercise'))
-  assert.deepEqual(find(list, 'exercise'), { ...friday }); assert.equal(find(list, 'exercise').done, true)
-  at('2026-11-24T08:00'); list = normalizeForToday(list)
-  assert.equal(find(list, 'exercise@2026-11-24').done, false)
-  assert.equal(list.filter((x) => x.series === 'exercise' || x.id === 'exercise').filter((x) => x.done).length, 2)
-  assert.equal(find(list, 'exercise@2026-11-23').done, true)
-})
-test('a long absence creates one next occurrence (no backlog) and keeps every completed task', () => {
+test('a long absence adds nothing and keeps every completed task', () => {
   const out = run('2027-02-01T08:00', [mk('daily', { recur: 'daily' }), mk('plain')])
-  assert.equal(out.length, 3); assert.equal(find(out, 'daily@2027-02-01').day, '2027-02-01'); assert.equal(find(out, 'plain').done, true)
-})
-test('weekday arithmetic across a month end and a year end', () => {
-  assert.equal(find(run('2026-12-31T08:00', [mk('w', { recur: 'weekdays', day: '2026-12-30' })]), 'w@2026-12-31').day, '2026-12-31')  // Thursday
-  const ny = find(run('2027-01-01T08:00', [mk('w', { recur: 'weekdays', day: '2026-12-31' })]), 'w@2027-01-01'); assert.equal(ny.day, '2027-01-01')  // Friday
-  const wk = find(run('2027-01-02T08:00', [mk('w', { recur: 'weekdays', day: '2027-01-01' })]), 'w@2027-01-04'); assert.equal(dow(wk.day), 1)  // Monday
-  assert.equal(find(run('2027-03-01T08:00', [mk('d', { recur: 'daily', day: '2027-02-28' })]), 'd@2027-03-01').day, '2027-03-01')  // not a leap year
+  assert.equal(out.length, 2); assert.equal(find(out, 'plain').done, true); assert.equal(find(out, 'daily').done, true)
 })
 
 test('unfinished tasks still roll forward exactly as before', () => {

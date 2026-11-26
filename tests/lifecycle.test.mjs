@@ -146,11 +146,11 @@ test('merging the Archive: union, later archiving wins, entries for restored tas
   assert.deepEqual(mergeArchive([], [{ id: 'p', archivedAt: 5 }], [], new Set(['p'])), [])  // deleted for good: the saved copy can't bring it back
 })
 
-test('Android: a completed repeating task keeps the coming days\' alarms until its next occurrence exists; after that the new task carries them', () => {
+test('Android: a completed repeating task has no alarms (it does not come back)', () => {
   const now = Date.now()
   const done = task({ recur: 'daily', done: true, reminder: rem({ time: '10:00' }) })
-  assert.ok(alertTimes(done, now).length >= 5)
-  assert.equal(alertTimes({ ...done, spawned: true }, now).length, 0)
+  assert.equal(alertTimes(done, now).length, 0)
+  assert.ok(alertTimes({ ...done, done: false }, now).length >= 5)  // the same task, not completed, still repeats
 })
 test('alarms of a task that comes back fresh', () => {
   const t = task({ reminder: rem({ time: hm(-30), lastAlert: 4, snoozeUntil: 9 }), recur: 'daily' })
