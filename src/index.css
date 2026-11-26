@@ -24,8 +24,8 @@ body { font-family: var(--font-display); -webkit-font-smoothing: antialiased; ba
 body::before {
   content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(42rem 42rem at 10% 6%, rgba(14,165,233,.20), transparent 62%),
-    radial-gradient(36rem 36rem at 90% 14%, rgba(45,212,191,.16), transparent 62%),
+    radial-gradient(42rem 42rem at 10% 6%, rgb(var(--ac2) / .20), transparent 62%),
+    radial-gradient(36rem 36rem at 90% 14%, rgb(var(--ac1) / .16), transparent 62%),
     radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.14), transparent 62%),
     radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.12), transparent 62%);
   animation: aurora-drift 38s ease-in-out infinite;
@@ -37,7 +37,7 @@ html::before {
   background:
     radial-gradient(34rem 30rem at 62% 8%, rgba(56,189,248,.16), transparent 62%),
     radial-gradient(30rem 34rem at 20% 58%, rgba(167,139,250,.14), transparent 62%),
-    radial-gradient(32rem 30rem at 94% 62%, rgba(45,212,191,.13), transparent 62%);
+    radial-gradient(32rem 30rem at 94% 62%, rgb(var(--ac1) / .13), transparent 62%);
   animation: aurora-drift-b 52s ease-in-out infinite;
   will-change: transform;
 }
@@ -45,7 +45,7 @@ html:where(.dark)::before {
   background:
     radial-gradient(34rem 30rem at 62% 8%, rgba(56,189,248,.26), transparent 62%),
     radial-gradient(30rem 34rem at 20% 58%, rgba(167,139,250,.24), transparent 62%),
-    radial-gradient(32rem 30rem at 94% 62%, rgba(45,212,191,.22), transparent 62%);
+    radial-gradient(32rem 30rem at 94% 62%, rgb(var(--ac1) / .22), transparent 62%);
 }
 /* fine film grain over everything behind the glass: hides colour banding in the soft gradients and adds a little depth */
 html::after {
@@ -55,13 +55,14 @@ html::after {
 html:where(.dark)::after { opacity: .1; filter: invert(1); }
 :where(.dark) body::before {
   background:
-    radial-gradient(42rem 42rem at 10% 6%, rgba(14,165,233,.40), transparent 62%),
-    radial-gradient(36rem 36rem at 90% 14%, rgba(45,212,191,.28), transparent 62%),
+    radial-gradient(42rem 42rem at 10% 6%, rgb(var(--ac2) / .40), transparent 62%),
+    radial-gradient(36rem 36rem at 90% 14%, rgb(var(--ac1) / .28), transparent 62%),
     radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.24), transparent 62%),
     radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.26), transparent 62%);
 }
 /* the aurora orbs show only when that backdrop is chosen */
-html:not([data-bg="aurora"])::before, html:not([data-bg="aurora"]) body::before { display: none; }
+body::before, html::before { transition: opacity .9s ease; }
+html:not([data-bg="aurora"])::before, html:not([data-bg="aurora"]) body::before { opacity: 0; }
 /* slow orb drift — transform only, so it stays cheap */
 @keyframes aurora-drift {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
@@ -74,24 +75,24 @@ html:not([data-bg="aurora"])::before, html:not([data-bg="aurora"]) body::before 
 }
 /* Frosted glass surface — web glassmorphism approximation (not Apple Liquid Glass) */
 .glass {
-  background: rgba(236,240,246,.62);
+  background: rgba(236,240,246,.86);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid rgba(255,255,255,.38);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 12px 32px -14px rgba(15,23,42,.24);
 }
 :where(.dark) .glass {
-  background: rgba(31,54,82,.55);
+  background: rgba(31,54,82,.84);
   border-color: rgba(255,255,255,.08);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 18px 44px -16px rgba(0,0,0,.7);
 }
 /* lighter surface for task cards — no backdrop-blur (cards scroll; blur there
    causes continuous GPU repaints and jank on mobile). Higher opacity keeps them legible. */
 .glass-sm {
-  background: rgba(240,243,248,.76);
+  background: rgba(240,243,248,.9);
   border: 1px solid rgba(255,255,255,.4);
 }
-:where(.dark) .glass-sm { background: rgba(31,54,82,.72); border-color: rgba(255,255,255,.07); }
+:where(.dark) .glass-sm { background: rgba(31,54,82,.9); border-color: rgba(255,255,255,.07); }
 
 /* Accessibility: drop transparency/blur when the OS asks for it */
 @media (prefers-reduced-transparency: reduce) {
@@ -155,8 +156,8 @@ html:not([data-bg="aurora"])::before, html:not([data-bg="aurora"]) body::before 
 
 /* pulsing glow for the progress ring at 100% */
 @keyframes glow-pulse {
-  0%, 100% { filter: drop-shadow(0 0 2.5px rgba(45,212,191,.5)); }
-  50% { filter: drop-shadow(0 0 7px rgba(45,212,191,.95)); }
+  0%, 100% { filter: drop-shadow(0 0 2.5px rgb(var(--ac1) / .5)); }
+  50% { filter: drop-shadow(0 0 7px rgb(var(--ac1) / .95)); }
 }
 .glow-pulse { animation: glow-pulse 1.8s ease-in-out infinite; }
 
@@ -190,7 +191,7 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
   .animate-bell, .animate-spin-slow, .animate-float, .animate-soft-pulse { animation: none; }
   .strike { animation: none; }
   button:hover .ad-arrow-dn, button:hover .ad-arrow-up { animation: none; }
-  .glow-pulse { animation: none; filter: drop-shadow(0 0 5px rgba(45,212,191,.7)); }
+  .glow-pulse { animation: none; filter: drop-shadow(0 0 5px rgb(var(--ac1) / .7)); }
   body::before, html::before { animation: none; }
 }
 
@@ -207,14 +208,14 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
 
 /* The Settings scroller: a slim rounded thumb in the brand teal that brightens on hover, a track inset from the rounded corners,
    and a soft fade on whichever side still has content (the data-edge-* flags are set from the panel's scroll position). */
-.fancy-scroll { scrollbar-width: thin; scrollbar-color: rgba(45,212,191,.45) transparent; }
+.fancy-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--ac1) / .45) transparent; }
 .fancy-scroll::-webkit-scrollbar { width: 10px; }
 .fancy-scroll::-webkit-scrollbar-track { background: transparent; margin: 6px 0; }
 .fancy-scroll::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(45,212,191,.55), rgba(14,165,233,.55));
+  background: linear-gradient(180deg, rgb(var(--ac1) / .55), rgb(var(--ac2) / .55));
   border-radius: 9999px; border: 3px solid transparent; background-clip: content-box;
 }
-.fancy-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(45,212,191,.95), rgba(14,165,233,.95)); background-clip: content-box; }
+.fancy-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgb(var(--ac1) / .95), rgb(var(--ac2) / .95)); background-clip: content-box; }
 .scroll-fade[data-edge-bottom="true"] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
 .scroll-fade[data-edge-top="true"] { -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(to top, #000 calc(100% - 20px), transparent); }
 .scroll-fade[data-edge-top="true"][data-edge-bottom="true"] {
@@ -225,17 +226,17 @@ button:hover .ad-arrow-up { animation: arrow-up .65s cubic-bezier(.4, 0, .2, 1);
 /* The page's own scrollbar: the same slim teal thumb (pseudo-elements only, so the gradient shows in Chromium/Electron). */
 html::-webkit-scrollbar { width: 12px; }
 html::-webkit-scrollbar-track { background: transparent; }
-html::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(45,212,191,.55), rgba(14,165,233,.55)); border-radius: 9999px; border: 3px solid transparent; background-clip: content-box; }
-html::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(45,212,191,.95), rgba(14,165,233,.95)); background-clip: content-box; }
+html::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgb(var(--ac1) / .55), rgb(var(--ac2) / .55)); border-radius: 9999px; border: 3px solid transparent; background-clip: content-box; }
+html::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgb(var(--ac1) / .95), rgb(var(--ac2) / .95)); background-clip: content-box; }
 
 /* Settings: a volume slider that fills with the brand gradient up to its value (--p), and round colour swatches */
 .ad-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 9999px; outline-offset: 6px; cursor: pointer;
-  background: linear-gradient(to right, #14b8a6 0, #0ea5e9 var(--p, 50%), rgba(148,163,184,.3) var(--p, 50%)); }
-.ad-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 9999px; background: #fff; border: 3px solid #14b8a6;
+  background: linear-gradient(to right, rgb(var(--ac3)) 0, rgb(var(--ac2)) var(--p, 50%), rgba(148,163,184,.3) var(--p, 50%)); }
+.ad-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 9999px; background: #fff; border: 3px solid rgb(var(--ac3));
   box-shadow: 0 1px 5px rgba(0,0,0,.3); transition: transform .2s var(--spring); }
 .ad-range:hover::-webkit-slider-thumb { transform: scale(1.15); }
 .ad-range:active::-webkit-slider-thumb { transform: scale(1.3); }
-.ad-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 9999px; background: #fff; border: 3px solid #14b8a6; box-shadow: 0 1px 5px rgba(0,0,0,.3); }
+.ad-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 9999px; background: #fff; border: 3px solid rgb(var(--ac3)); box-shadow: 0 1px 5px rgba(0,0,0,.3); }
 .ad-range::-moz-range-track { background: transparent; }
 .ad-color { -webkit-appearance: none; appearance: none; width: 26px; height: 26px; padding: 0; border: 2px solid rgba(255,255,255,.7); border-radius: 9999px;
   background: none; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .2s var(--spring); }
@@ -293,3 +294,13 @@ svg:not(.gl-todo) > .gl-tick { stroke-dashoffset: 0; }
 .ad-pane { animation: ad-pane-in .32s var(--ease-out, cubic-bezier(.22, 1, .36, 1)) both; }
 .ad-pane > section { animation: none; }
 @media (prefers-reduced-motion: reduce) { .ad-pane { animation: none; } }
+
+/* Accent colour: the app's teal and sky blue are remapped to another pair. --ac1/--ac2/--ac3 feed the hand-written CSS and the skyline. */
+:root { --ac1: 45 212 191; --ac2: 14 165 233; --ac3: 20 184 166; }
+:root[data-accent="blue"] { --ac1: 96 165 250; --ac2: 129 140 248; --ac3: 59 130 246; --color-teal-300: #93c5fd; --color-teal-400: #60a5fa; --color-teal-500: #3b82f6; --color-teal-600: #2563eb; --color-teal-700: #1d4ed8; --color-sky-300: #a5b4fc; --color-sky-400: #818cf8; --color-sky-500: #6366f1; --color-sky-600: #4f46e5; --color-sky-700: #4338ca; }
+:root[data-accent="violet"] { --ac1: 167 139 250; --ac2: 232 121 249; --ac3: 139 92 246; --color-teal-300: #c4b5fd; --color-teal-400: #a78bfa; --color-teal-500: #8b5cf6; --color-teal-600: #7c3aed; --color-teal-700: #6d28d9; --color-sky-300: #f0abfc; --color-sky-400: #e879f9; --color-sky-500: #d946ef; --color-sky-600: #c026d3; --color-sky-700: #a21caf; }
+:root[data-accent="pink"] { --ac1: 244 114 182; --ac2: 192 132 252; --ac3: 236 72 153; --color-teal-300: #f9a8d4; --color-teal-400: #f472b6; --color-teal-500: #ec4899; --color-teal-600: #db2777; --color-teal-700: #be185d; --color-sky-300: #d8b4fe; --color-sky-400: #c084fc; --color-sky-500: #a855f7; --color-sky-600: #9333ea; --color-sky-700: #7e22ce; }
+:root[data-accent="green"] { --ac1: 52 211 153; --ac2: 34 211 238; --ac3: 16 185 129; --color-teal-300: #6ee7b7; --color-teal-400: #34d399; --color-teal-500: #10b981; --color-teal-600: #059669; --color-teal-700: #047857; --color-sky-300: #67e8f9; --color-sky-400: #22d3ee; --color-sky-500: #06b6d4; --color-sky-600: #0891b2; --color-sky-700: #0e7490; }
+/* Text size: Tailwind sizes everything in rem, so changing the root size scales the whole app */
+html[data-size="sm"] { font-size: 14px; }
+html[data-size="lg"] { font-size: 18px; }

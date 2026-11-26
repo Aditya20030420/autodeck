@@ -7,7 +7,7 @@ import {
   LayoutGrid, Circle, Flame, Briefcase, User,
   GripVertical, ChevronDown, Download, Upload, X,
   FileText, ClipboardList, Share2, Clipboard, CheckCircle, Settings, Volume2, RotateCw, CalendarDays,
-  Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles,
+  Archive as ArchiveIcon, ArchiveRestore, Tag, TriangleAlert, House, Sparkles, Building2, ImageOff,
   Clock3, SkipForward, ChevronLeft, ChevronRight, Target, StickyNote, History as HistoryIcon, SlidersHorizontal, Palette, Info, Keyboard, RotateCcw,
 } from 'lucide-react'
 import {
@@ -710,6 +710,12 @@ export default function TodoApp() {
   const [soundOn, setSoundOn] = useLocalStorage('todo.sound', true)  // UI sound effects on/off
   const [backdrop, setBackdrop] = useLocalStorage('todo.backdrop', 'skyline')  // page backdrop: 'skyline' | 'aurora' | 'off'
   useEffect(() => { document.documentElement.dataset.bg = backdrop }, [backdrop])
+  const [accent, setAccent] = useLocalStorage('todo.accent', 'teal')  // highlight colour (see ACCENTS)
+  const [textSize, setTextSize] = useLocalStorage('todo.textSize', 'md')  // 'sm' | 'md' | 'lg'
+  const [tod, setTod] = useLocalStorage('todo.tod', true)  // the skyline's sky follows the clock
+  const [weather, setWeather] = useLocalStorage('todo.weather', 'clear')  // 'clear' | 'rain' | 'snow' | 'fog' | 'random'
+  useEffect(() => { document.documentElement.dataset.accent = accent }, [accent])
+  useEffect(() => { document.documentElement.dataset.size = textSize }, [textSize])
   const [volume, setVolume] = useLocalStorage('todo.volume', 0.8)    // master sound volume 0–1
   const [hpAlarm, setHpAlarm] = useLocalStorage('todo.hpAlarm', true) // loud alarm for high-priority reminders
   const [remDefaults, setRemDefaults] = useLocalStorage('todo.remDefaults', { lead: 0, repeat: 0 })
@@ -1325,7 +1331,7 @@ export default function TodoApp() {
   return (
     <div className={`min-h-screen text-slate-900 dark:text-slate-100 transition-colors ${hasTitleBar() ? 'pt-9' : ''}`}>
       {hasTitleBar() && <TitleBar dark={dark} />}
-      {backdrop === 'skyline' && <Skyline pct={pct} dark={dark} />}
+      <Skyline pct={pct} dark={dark} accent={accent} show={backdrop === 'skyline'} tod={tod} weather={weather} />
       {/* the page grows with the window instead of staying a narrow strip in the middle of a wide screen */}
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16 lg:max-w-6xl lg:px-8 xl:max-w-7xl 2xl:max-w-[96rem]">
 
@@ -1394,6 +1400,11 @@ export default function TodoApp() {
             className="hover:[&_svg]:rotate-45">
             <Settings size={18} />
           </IconButton>
+          <IconButton title={`Background: ${{ skyline: 'Skyline', aurora: 'Aurora', off: 'Off' }[backdrop]} (click to change)`}
+            onClick={() => setBackdrop((b) => ({ skyline: 'aurora', aurora: 'off', off: 'skyline' }[b] || 'skyline'))}
+            className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
+            {backdrop === 'skyline' ? <Building2 size={18} /> : backdrop === 'aurora' ? <Sparkles size={18} /> : <ImageOff size={18} />}
+          </IconButton>
           <IconButton title="Toggle theme" onClick={() => setDark((d) => !d)}
             className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
             <ThemeIcon dark={dark} size={18} />
@@ -1415,7 +1426,7 @@ export default function TodoApp() {
             volume={volume} setVolume={setVolume}
             hpAlarm={hpAlarm} setHpAlarm={setHpAlarm}
             remDefaults={remDefaults} setRemDefaults={setRemDefaults}
-            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark} backdrop={backdrop} setBackdrop={setBackdrop}
+            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark} backdrop={backdrop} setBackdrop={setBackdrop} accent={accent} setAccent={setAccent} textSize={textSize} setTextSize={setTextSize} tod={tod} setTod={setTod} weather={weather} setWeather={setWeather}
             notify={notify} muted={muted} onRequestNotify={requestNotify} />
         )}
 
@@ -3654,6 +3665,7 @@ function SettingsSection({ icon: Icon, title, delay = 0, children }) {
     </section>
   )
 }
+const ACCENTS = [['teal', 'Teal', '#14b8a6'], ['blue', 'Blue', '#3b82f6'], ['violet', 'Violet', '#8b5cf6'], ['pink', 'Pink', '#ec4899'], ['green', 'Green', '#10b981']]
 const SETTINGS_TABS = [
   { id: 'look', label: 'Look', Icon: Palette },
   { id: 'alerts', label: 'Alerts', Icon: Bell },
@@ -3678,7 +3690,7 @@ function TitleBar({ dark }) {
 
 const ROW = 'flex items-center justify-between gap-3 px-4 py-3'
 
-function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, backdrop, setBackdrop, notify, muted, onRequestNotify }) {
+function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, backdrop, setBackdrop, accent, setAccent, textSize, setTextSize, tod, setTod, weather, setWeather, notify, muted, onRequestNotify }) {
   const [tab, setTab] = useState('look')
   const navEl = useRef(null)
   const [pill, setPill] = useState(null)  // {x, y, w, h} of the active tab; null until measured (so the first paint doesn't animate)
@@ -3809,6 +3821,50 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
                 {[['skyline', 'Skyline'], ['aurora', 'Aurora'], ['off', 'Off']].map(([v, l]) => (
                   <button key={v} type="button" role="radio" aria-checked={backdrop === v} onClick={() => setBackdrop(v)}
                     className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${backdrop === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Sky follows the clock</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Dawn and dusk colours at the real time</div>
+              </div>
+              <Switch checked={tod} onChange={setTod} label="Sky follows the clock" />
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Weather</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Random changes every 20 minutes</div>
+              </div>
+              <div role="radiogroup" aria-label="Weather" className="flex flex-wrap justify-end gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                {[['clear', 'Clear'], ['rain', 'Rain'], ['snow', 'Snow'], ['fog', 'Fog'], ['random', 'Random']].map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={weather === v} onClick={() => setWeather(v)}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${weather === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Accent colour</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Buttons, the ring and highlights</div>
+              </div>
+              <div role="radiogroup" aria-label="Accent colour" className="flex gap-2">
+                {ACCENTS.map(([v, l, hex]) => (
+                  <button key={v} type="button" role="radio" aria-checked={accent === v} aria-label={l} title={l} onClick={() => setAccent(v)}
+                    style={{ backgroundColor: hex }}
+                    className={`h-6 w-6 rounded-full transition active:scale-90 ${accent === v ? 'ring-2 ring-offset-2 ring-offset-transparent ring-slate-400 dark:ring-white/70' : 'opacity-80 hover:opacity-100 hover:scale-110'}`} />
+                ))}
+              </div>
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Text size</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Makes the whole app smaller or larger</div>
+              </div>
+              <div role="radiogroup" aria-label="Text size" className="flex gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                {[['sm', 'Small'], ['md', 'Normal'], ['lg', 'Large']].map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={textSize === v} onClick={() => setTextSize(v)}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${textSize === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
                 ))}
               </div>
             </div>
