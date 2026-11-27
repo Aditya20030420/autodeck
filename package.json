@@ -64,7 +64,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
-    "@tailwindcss/vite": "^4.0.0",
+    "@tailwindcss/vite": "^4.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
