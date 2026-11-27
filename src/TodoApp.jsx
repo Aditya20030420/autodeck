@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import AutoDeckIcon from './AutoDeckIcon.tsx'
-import Skyline from './Skyline.jsx'
+import Skyline, { AURORA_THEMES } from './Skyline.jsx'
 // jspdf is lazy-loaded inside exportPDF so its weight isn't in the initial bundle.
 // (Excel export uses dependency-free CSV — see exportCSV.)
 
@@ -688,10 +688,17 @@ export default function TodoApp() {
   const [soundOn, setSoundOn] = useLocalStorage('todo.sound', true)  // UI sound effects on/off
   const [backdrop, setBackdrop] = useLocalStorage('todo.backdrop', 'skyline')  // page backdrop: 'skyline' | 'aurora' | 'off'
   useEffect(() => { document.documentElement.dataset.bg = backdrop }, [backdrop])
+  const [aurora, setAurora] = useLocalStorage('todo.aurora', 'classic')  // colours of the Aurora background and the night-sky lights (see AURORA_THEMES)
+  useEffect(() => {
+    const th = AURORA_THEMES.find((a) => a.id === aurora) || AURORA_THEMES[0], st = document.documentElement.style
+    for (let i = 0; i < 6; i++) { if (th.css) st.setProperty(`--au${i + 1}`, th.css[i]); else st.removeProperty(`--au${i + 1}`) }
+  }, [aurora])
   const [accent, setAccent] = useLocalStorage('todo.accent', 'teal')  // highlight colour (see ACCENTS)
   const [textSize, setTextSize] = useLocalStorage('todo.textSize', 'md')  // 'sm' | 'md' | 'lg'
   const [tod, setTod] = useLocalStorage('todo.tod', true)  // the skyline's sky follows the clock
   const [weather, setWeather] = useLocalStorage('todo.weather', 'clear')  // 'clear' | 'rain' | 'snow' | 'fog' | 'random'
+  const [wind, setWind] = useLocalStorage('todo.wind', 'calm')            // 'calm' | 'breeze' | 'windy'
+  const [season, setSeason] = useLocalStorage('todo.season', 'auto')      // 'auto' (by the calendar) | 'spring' | 'summer' | 'autumn' | 'winter' | 'off'
   useEffect(() => { document.documentElement.dataset.accent = accent }, [accent])
   useEffect(() => { document.documentElement.dataset.size = textSize }, [textSize])
   const [volume, setVolume] = useLocalStorage('todo.volume', 0.8)    // master sound volume 0–1
@@ -1308,7 +1315,7 @@ export default function TodoApp() {
   return (
     <div className={`min-h-screen text-slate-900 dark:text-slate-100 transition-colors ${hasTitleBar() ? 'pt-9' : ''}`}>
       {hasTitleBar() && <TitleBar dark={dark} />}
-      <Skyline pct={pct} dark={dark} accent={accent} show={backdrop === 'skyline'} tod={tod} weather={weather} />
+      <Skyline pct={pct} dark={dark} accent={accent} show={backdrop === 'skyline'} tod={tod} weather={weather} aurora={aurora} wind={wind} season={season} />
       {/* the page grows with the window instead of staying a narrow strip in the middle of a wide screen */}
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16 lg:max-w-6xl lg:px-8 xl:max-w-7xl 2xl:max-w-[96rem]">
 
@@ -1316,6 +1323,14 @@ export default function TodoApp() {
 
         {/* Brand */}
         <div className="animate-fade-in mb-6 flex flex-wrap items-center gap-3">
+          {/* the name sits on its own glass pill, so its colours read the same over any background */}
+          <button type="button" title="Go to Tasks" aria-label="AutoDeck, go to the Tasks tab"
+            onClick={() => {
+              // already on Tasks: glide to the top; coming from another tab: switch, then jump to the top once it has rendered
+              if (view === 'tasks') window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+              else { setView('tasks'); requestAnimationFrame(() => window.scrollTo({ top: 0 })) }
+            }}
+            className="pill-soft flex cursor-pointer items-center gap-3 rounded-2xl py-2 pl-2.5 pr-5 text-left transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]">
           <AutoDeckIcon size={46} background={false} />
           <div className="leading-none">
             <div className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
@@ -1326,7 +1341,8 @@ export default function TodoApp() {
               Your workflow, on autopilot.
             </div>
           </div>
-        <div className="glass ml-auto flex max-w-full items-center gap-0.5 rounded-full p-1 shadow-sm">
+          </button>
+        <div className="pill-soft ml-auto flex max-w-full items-center gap-0.5 rounded-full p-1.5">
           <IconButton
             title={!notify ? 'Notifications off. Click to enable'
               : muted ? 'Notifications muted. Click to unmute'
@@ -1382,6 +1398,12 @@ export default function TodoApp() {
             className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
             {backdrop === 'skyline' ? <Building2 size={18} /> : backdrop === 'aurora' ? <Sparkles size={18} /> : <ImageOff size={18} />}
           </IconButton>
+          {backdrop === 'aurora' && (  // a small arrow beside the icon opens the Aurora colours
+            <Select value={aurora} display="" label="Aurora colours" title="Aurora colours" onChange={(e) => setAurora(e.target.value)}
+              className="-ml-1.5 h-9 w-5 justify-center rounded-full pr-0! pl-0! text-slate-500 transition hover:bg-black/5 dark:text-slate-300 dark:hover:bg-white/10 [&>svg]:right-1">
+              {AURORA_THEMES.map((a) => <option key={a.id} value={a.id} icon={<span className="h-3.5 w-3.5 rounded-full" style={{ background: `linear-gradient(135deg, ${a.sw[0]}, ${a.sw[1]} 55%, ${a.sw[2]})` }} />}>{a.label}</option>)}
+            </Select>
+          )}
           <IconButton title="Toggle theme" onClick={() => setDark((d) => !d)}
             className="hover:[&_svg]:scale-[1.15] active:[&_svg]:scale-90">
             <ThemeIcon dark={dark} size={18} />
@@ -1403,7 +1425,7 @@ export default function TodoApp() {
             volume={volume} setVolume={setVolume}
             hpAlarm={hpAlarm} setHpAlarm={setHpAlarm}
             remDefaults={remDefaults} setRemDefaults={setRemDefaults}
-            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark} backdrop={backdrop} setBackdrop={setBackdrop} accent={accent} setAccent={setAccent} textSize={textSize} setTextSize={setTextSize} tod={tod} setTod={setTod} weather={weather} setWeather={setWeather}
+            categories={categories} setCategories={setCategories} tasks={tasks} dark={dark} setDark={setDark} backdrop={backdrop} setBackdrop={setBackdrop} accent={accent} setAccent={setAccent} textSize={textSize} setTextSize={setTextSize} tod={tod} setTod={setTod} weather={weather} setWeather={setWeather} aurora={aurora} setAurora={setAurora} wind={wind} setWind={setWind} season={season} setSeason={setSeason}
             notify={notify} muted={muted} onRequestNotify={requestNotify} />
         )}
 
@@ -2688,7 +2710,7 @@ function SubChips({ st, categories, nowTick = Date.now(), taskPriority }) {
     End, Enter, Escape, type a letter to jump), shows a tick on the chosen entry, and an option may carry a colour dot
     (dotClass for a Tailwind background class, dotColor for a hex colour). An empty disabled option is the placeholder. */
 let selectIds = 0
-function Select({ value, onChange, label, title, className = '', style, lead, disabled, children }) {
+function Select({ value, onChange, label, title, className = '', style, lead, disabled, display, onOpen, children }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 0 })
@@ -2707,6 +2729,7 @@ function Select({ value, onChange, label, title, className = '', style, lead, di
   const close = useCallback(() => setOpen(false), [])
   const openList = () => {
     if (disabled) return
+    onOpen?.()
     const r = btn.current.getBoundingClientRect()
     setPos({ left: r.left, top: r.bottom + 6, minWidth: r.width, bottom: r.top - 6 })
     const i = shown.findIndex((o) => o.value === String(value ?? ''))
@@ -2778,7 +2801,7 @@ function Select({ value, onChange, label, title, className = '', style, lead, di
         onClick={() => (open ? close() : openList())} onKeyDown={onKeyDown}
         className={`${className} relative inline-flex min-w-0 cursor-pointer items-center text-left disabled:cursor-default disabled:opacity-50 ${lead ? 'pl-8' : ''} pr-8`}>
         {lead && <span className="pointer-events-none absolute left-3 flex items-center text-slate-500 dark:text-slate-400">{lead}</span>}
-        <span className="truncate">{chosen ? chosen.label : ''}</span>
+        <span className="truncate">{display ?? (chosen ? chosen.label : '')}</span>
         <ChevronDown size={13} className={`pointer-events-none absolute right-3 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && createPortal(
@@ -3667,7 +3690,7 @@ function TitleBar({ dark }) {
 
 const ROW = 'flex items-center justify-between gap-3 px-4 py-3'
 
-function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, backdrop, setBackdrop, accent, setAccent, textSize, setTextSize, tod, setTod, weather, setWeather, notify, muted, onRequestNotify }) {
+function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlarm, setHpAlarm, remDefaults, setRemDefaults, categories, setCategories, tasks, dark, setDark, backdrop, setBackdrop, accent, setAccent, textSize, setTextSize, tod, setTod, weather, setWeather, aurora, setAurora, wind, setWind, season, setSeason, notify, muted, onRequestNotify }) {
   const [tab, setTab] = useState('look')
   const navEl = useRef(null)
   const [pill, setPill] = useState(null)  // {x, y, w, h} of the active tab; null until measured (so the first paint doesn't animate)
@@ -3795,7 +3818,14 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
                 <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Skyline builds as you finish tasks</div>
               </div>
               <div role="radiogroup" aria-label="Background" className="flex gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
-                {[['skyline', 'Skyline'], ['aurora', 'Aurora'], ['off', 'Off']].map(([v, l]) => (
+                {[['skyline', 'Skyline'], ['aurora', 'Aurora'], ['off', 'Off']].map(([v, l]) => v === 'aurora' ? (
+                  // Aurora is also a dropdown: choosing it switches to the Aurora background, and the list picks its colours
+                  <Select key={v} value={aurora} display={l} label="Aurora colours" onOpen={() => setBackdrop('aurora')}
+                    onChange={(e) => { setAurora(e.target.value); setBackdrop('aurora') }}
+                    className={`rounded-lg py-1 pl-2.5 text-xs font-semibold transition active:scale-95 ${backdrop === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                    {AURORA_THEMES.map((a) => <option key={a.id} value={a.id} icon={<span className="h-3.5 w-3.5 rounded-full" style={{ background: `linear-gradient(135deg, ${a.sw[0]}, ${a.sw[1]} 55%, ${a.sw[2]})` }} />}>{a.label}</option>)}
+                  </Select>
+                ) : (
                   <button key={v} type="button" role="radio" aria-checked={backdrop === v} onClick={() => setBackdrop(v)}
                     className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${backdrop === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
                 ))}
@@ -3817,6 +3847,30 @@ function SettingsPanel({ onClose, soundOn, setSoundOn, volume, setVolume, hpAlar
                 {[['clear', 'Clear'], ['rain', 'Rain'], ['snow', 'Snow'], ['fog', 'Fog'], ['random', 'Random']].map(([v, l]) => (
                   <button key={v} type="button" role="radio" aria-checked={weather === v} onClick={() => setWeather(v)}
                     className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${weather === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Wind</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Clouds, rain, snow and smoke lean with it</div>
+              </div>
+              <div role="radiogroup" aria-label="Wind" className="flex gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                {[['calm', 'Calm'], ['breeze', 'Breeze'], ['windy', 'Windy']].map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={wind === v} onClick={() => setWind(v)}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${wind === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div className={ROW}>
+              <div>
+                <div className="font-semibold text-slate-700 dark:text-slate-200">Season</div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Leaves, blossom, fireflies or snow on the roofs</div>
+              </div>
+              <div role="radiogroup" aria-label="Season" className="flex flex-wrap justify-end gap-1 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                {[['auto', 'Auto'], ['spring', 'Spring'], ['summer', 'Summer'], ['autumn', 'Autumn'], ['winter', 'Winter'], ['off', 'Off']].map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={season === v} onClick={() => setSeason(v)}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${season === v ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-white shadow-sm' : 'text-slate-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>{l}</button>
                 ))}
               </div>
             </div>

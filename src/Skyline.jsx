@@ -10,10 +10,30 @@ const COLS = {
 }
 // far to near: building width, max height (share of the screen), window size, body opacity, window opacity, mouse shift in px
 const LAYERS = [
-  { key: 'far', seed: 1, bw: 38, maxH: 0.24, gap: 2, ws: 7, body: 0.45, win: 0.2, par: 6 },
-  { key: 'mid', seed: 4, bw: 46, maxH: 0.3, gap: 3, ws: 8, body: 0.58, win: 0.3, par: 12 },
-  { key: 'near', seed: 7, bw: 54, maxH: 0.36, gap: 4, ws: 9, body: 0.72, win: 0.42, par: 22 },
+  { key: 'far', seed: 1, bw: 50, maxH: 0.34, gap: 2, ws: 9, body: 0.45, win: 0.2, par: 6 },
+  { key: 'mid', seed: 4, bw: 62, maxH: 0.43, gap: 3, ws: 10, body: 0.58, win: 0.3, par: 12 },
+  { key: 'near', seed: 7, bw: 74, maxH: 0.52, gap: 4, ws: 12, body: 0.72, win: 0.42, par: 22 },
 ]
+// Aurora colour themes. `css` are the six colours (r g b) of the Aurora background (null = follow the accent colour); `sky` are the three
+// colours of the northern lights in the night sky (r,g,b); `sw` is a swatch for the Settings button.
+export const AURORA_THEMES = [
+  { id: 'classic', label: 'Classic', css: null, sky: ['90,255,160', '170,120,255', '60,230,200'], sw: ['#2dd4bf', '#84cc16', '#818cf8'] },
+  { id: 'northern', label: 'Northern', css: ['52 211 153', '74 222 128', '34 211 238', '139 92 246', '45 212 191', '167 139 250'], sky: ['90,255,160', '170,120,255', '60,230,200'], sw: ['#34d399', '#22d3ee', '#8b5cf6'] },
+  { id: 'sunset', label: 'Sunset', css: ['251 146 60', '244 114 182', '250 204 21', '168 85 247', '253 164 175', '192 132 252'], sky: ['255,150,90', '255,110,190', '190,110,255'], sw: ['#fb923c', '#f472b6', '#a855f7'] },
+  { id: 'ocean', label: 'Ocean', css: ['14 165 233', '56 189 248', '45 212 191', '59 130 246', '34 211 238', '99 102 241'], sky: ['60,190,255', '60,230,220', '110,130,255'], sw: ['#0ea5e9', '#2dd4bf', '#6366f1'] },
+  { id: 'candy', label: 'Candy', css: ['244 114 182', '232 121 249', '125 211 252', '167 139 250', '249 168 212', '196 181 253'], sky: ['255,130,200', '230,130,255', '140,210,255'], sw: ['#f472b6', '#e879f9', '#7dd3fc'] },
+  { id: 'forest', label: 'Forest', css: ['22 163 74', '132 204 22', '16 185 129', '21 128 61', '163 230 53', '52 211 153'], sky: ['120,255,100', '60,220,140', '200,255,90'], sw: ['#16a34a', '#84cc16', '#10b981'] },
+  { id: 'twilight', label: 'Twilight', css: ['79 70 229', '124 58 237', '59 130 246', '192 38 211', '99 102 241', '167 139 250'], sky: ['120,120,255', '190,100,255', '90,170,255'], sw: ['#4f46e5', '#7c3aed', '#c026d3'] },
+  { id: 'gold', label: 'Gold', css: ['245 158 11', '250 204 21', '251 146 60', '234 88 12', '253 224 71', '252 211 77'], sky: ['255,210,80', '255,160,60', '255,235,120'], sw: ['#f59e0b', '#facc15', '#ea580c'] },
+  { id: 'glacier', label: 'Glacier', css: ['125 211 252', '165 243 252', '186 230 253', '147 197 253', '103 232 249', '199 210 254'], sky: ['150,230,255', '190,220,255', '120,255,235'], sw: ['#7dd3fc', '#a5f3fc', '#c7d2fe'] },
+  { id: 'ember', label: 'Ember', css: ['239 68 68', '249 115 22', '250 204 21', '190 24 93', '251 146 60', '244 63 94'], sky: ['255,110,80', '255,170,60', '240,70,130'], sw: ['#ef4444', '#f97316', '#facc15'] },
+]
+const WIND = { calm: 0, breeze: 0.5, windy: 1 }
+const SEASON_BY_MONTH = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter']  // northern hemisphere
+const BRANCH = [[-9, -14], [0, -18], [9, -13], [-5, -8], [6, -7]]  // where a bare tree's branches end (from the trunk top)
+const LEAF = ['#c2410c', '#d97706', '#b45309', '#dc2626', '#ca8a04']
+const PETAL = ['#f9a8d4', '#fbcfe8', '#ffffff', '#f472b6']
+const WORDS = ['DONE', 'GO!', 'FOCUS', 'NICE', 'WOW', 'YES', 'GOAL', 'GREAT']  // what the rooftop signs say
 const NEON = ['#f472b6', '#22d3ee', '#a3e635', '#fb923c']  // rooftop sign colours
 const PEOPLE = ['#e2e8f0', '#f472b6', '#fbbf24', '#60a5fa', '#34d399']
 const CONFETTI = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6']  // confetti and balloons
@@ -56,6 +76,7 @@ const shapePath = (c, k, S) => {
 }
 const LANTERN = ['#fb923c', '#f97316', '#ef4444', '#fbbf24']
 const FIREWORK = ['#fbbf24', '#f472b6', '#22d3ee', '#a3e635', '#c084fc']
+const CAR_Z = 1.5  // street furniture (cars, people, lamps, lights) is drawn this much larger, to match the bigger buildings
 const ROAD = 14  // height of the road strip along the bottom
 const CAR_COLORS = ['#e11d48', '#2563eb', '#f59e0b', '#10b981', '#e2e8f0', '#7c3aed']
 // The sky by the clock: hour, then top colour (r,g,b) and horizon colour (r,g,b)
@@ -79,7 +100,7 @@ const glowSprite = (rgb) => {
 }
 const clear = (rgb) => rgb.replace('rgb(', 'rgba(').replace(')', ',0)')  // the same colour, fully transparent (fading from black would go grey)
 const mix = (x, y, k) => {
-  const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+  const p = (h) => (h[0] === '#' ? [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) : h.match(/\d+/g).slice(0, 3).map(Number))
   const [a, b] = [p(x), p(y)]
   return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * k)).join(',')})`
 }
@@ -98,8 +119,8 @@ const build = (W, H, river) => LAYERS.map((L) => {
     const ks = new Float32Array(rows * cols), ph = new Float32Array(rows * cols)
     for (let n = 0; n < ks.length; n++) { ks[n] = rnd(sd * 7 + n * 3.7); ph[n] = rnd(sd * 13 + n * 5.1) }
     const inRiver = river && L.key !== 'far' && x + w > river.x0 - 4 && x < river.x1 + 4  // the near and middle towers leave room for the river
-    const sign = L.key === 'near' && style < 3 && rnd(sd + 300) > 0.62 ? { col: NEON[Math.floor(rnd(sd + 310) * 4)], w: Math.min(26, w * 0.7) } : null
-    if (!inRiver) list.push({ x, w, full, delay: rnd(sd + 90) * 0.3, style, cols, rows, ks, ph, pad: (w - (cols * (L.ws + 3) - 3)) / 2, h: 0, gr: 0, sign })
+    const sign = L.key === 'near' && style < 3 && rnd(sd + 300) > 0.62 ? { col: NEON[Math.floor(rnd(sd + 310) * 4)], w: Math.min(34, w * 0.7) } : null
+    if (!inRiver) list.push({ x, w, full, delay: rnd(sd + 90) * 0.3, style, cols, rows, ks, ph, pad: (w - (cols * (L.ws + 3) - 3)) / 2, h: 0, gr: 0, sign, smoke: L.key !== 'far' && style < 2 && !sign && rnd(sd + 400) > 0.4 ? rnd(sd + 410) : -1 })
     x += w + L.gap
   }
   list.crane = -1  // the near tower that finishes last gets the crane
@@ -111,11 +132,11 @@ const build = (W, H, river) => LAYERS.map((L) => {
   return list
 })
 
-export default function Skyline({ pct, dark, accent, show = true, tod = true, weather = 'clear' }) {
+export default function Skyline({ pct, dark, accent, show = true, tod = true, weather = 'clear', aurora = 'classic', wind = 'calm', season = 'auto' }) {
   const ref = useRef(null)
   const redraw = useRef(null)
-  const live = useRef({ pct, dark, show, tod, weather })
-  live.current = { pct, dark, show, tod, weather }
+  const live = useRef({ pct, dark, show, tod, weather, aurora, wind, season })
+  live.current = { pct, dark, show, tod, weather, aurora, wind, season }
   const glow = useRef({ warm: null, acc: null })
   const ac = useRef('45,212,191')  // the accent colour as r,g,b, read from the page's --ac1
   useEffect(() => { ac.current = getComputedStyle(document.documentElement).getPropertyValue('--ac1').trim().replace(/ +/g, ',') || '45,212,191'; glow.current.acc = glowSprite(ac.current); redraw.current?.() }, [accent])
@@ -128,13 +149,13 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
     let night = live.current.dark ? 1 : 0           // 0 = day, 1 = night; glides when the theme changes
     let todAmt = live.current.tod ? 1 : 0           // how much the sky follows the clock; glides when switched
     let wr = 0, wsn = 0, wf = 0                     // how much rain, snow and fog there is right now (each eases in and out)
-    const drops = Array.from({ length: 170 }, (_, i) => ({ x: rnd(i), y: rnd(i + 50), v: 0.7 + rnd(i + 90) * 0.6, l: 9 + rnd(i + 130) * 9 }))
+    const drops = Array.from({ length: 260 }, (_, i) => ({ x: rnd(i), y: rnd(i + 50), v: 0.7 + rnd(i + 90) * 0.6, l: 9 + rnd(i + 130) * 9, z: i % 100 < 45 ? 0 : i % 100 < 85 ? 1 : 2 }))  // z: far, middle and near rain
     const flakes = Array.from({ length: 110 }, (_, i) => ({ x: rnd(i + 300), y: rnd(i + 350), v: 0.5 + rnd(i + 390) * 0.8, r: 1 + rnd(i + 430) * 1.8, ph: rnd(i + 470) * 6.3 }))
     // the street: a river, lamps, traffic lights, cars that stop at red, people, and a firework show at 100%
-    const world = { river: null, lamps: [], lights: [] }
+    const world = { river: null, lamps: [], lights: [], trees: [] }
     const cars = Array.from({ length: 17 }, (_, i) => {
-      const bus = i % 7 === 3, suv = !bus && i % 3 === 1, base = 20 + rnd(i + 900) * 45
-      return { i, dir: i % 2 ? -1 : 1, bus, suv, len: bus ? 26 : suv ? 17 : 15, base, v: base, x: 0 }
+      const bus = i % 7 === 3, suv = !bus && i % 3 === 1, base = 26 + rnd(i + 900) * 52
+      return { i, dir: i % 2 ? -1 : 1, bus, suv, len: (bus ? 26 : suv ? 17 : 15) * CAR_Z, base, v: base, x: 0 }
     })
     const people = Array.from({ length: 16 }, (_, i) => ({ i, dir: i % 3 ? 1 : -1, spd: 6 + rnd(i + 1900) * 8, x: 0, ph: rnd(i + 1950) * 6.3 }))
     const fw = { rockets: [], bursts: [], flashes: [], lanterns: [], bag: [], until: 0, next: 0, nextL: 0 }
@@ -163,6 +184,23 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
     const pa = [0, 0, 0], pb = [0, 0, 0]
     const spr = {}  // glow sprites by colour
     const sp = (rgb) => (spr[rgb] ||= glowSprite(rgb))
+    let wn = 0, wph = 0        // how windy it is right now (0-1, eases), and a clock that runs faster in wind so clouds speed up without jumping
+    // a tall gradient used to shade facades: a touch of sky light at the top, darker toward the street
+    const shade = (() => { const o = document.createElement('canvas'); o.width = 2; o.height = 64; const x = o.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 64)
+      gr.addColorStop(0, 'rgba(255,255,255,.16)'); gr.addColorStop(0.35, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.3)'); x.fillStyle = gr; x.fillRect(0, 0, 2, 64); return o })()
+    let leaf = 1; const treeCol = [34, 150, 70]  // how much of its leaves a tree has (0 bare in winter, 1 full) and the canopy colour, which glides between seasons
+    let gloomNow = 0           // how grey the weather is (rain, snow, fog); people switch their lights on when it is
+    let snowCap = 0, sPart = 0, sKind = 'off', bo = 0, bv = 0, cr = { s: 0, v: 0, pjx: 0, pvx: 0 }  // snow on the roofs (0-1), how visible the season's falling things are, which season they are, how far the bridge is open
+    const shed = []  // leaves and petals that have come off the trees: they fall, land on the pavement, and fade
+    let au = 0  // how visible the northern lights are right now
+    let auCur = live.current.aurora, auPrev = auCur, auX = 1  // the colours in use, the ones fading out, and how far the change has got
+    const strips = {}  // aurora curtain slices: bright at the bottom edge, fading upward
+    const strip = (rgb) => strips[rgb] ||= (() => {
+      const s = document.createElement('canvas'); s.width = 4; s.height = 64
+      const x = s.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 64)
+      gr.addColorStop(0, `rgba(${rgb},0)`); gr.addColorStop(0.55, `rgba(${rgb},.3)`); gr.addColorStop(0.85, `rgba(${rgb},.75)`); gr.addColorStop(1, `rgba(${rgb},0)`)  // soft at both edges
+      x.fillStyle = gr; x.fillRect(1, 0, 2, 64); return s  // the side columns stay clear, so neighbouring slices melt together
+    })()
     const fest = { start: 0, until: 0, conf: [], balloons: [], acc: 0, nextB: 0 }  // the daytime celebration: rainbow, balloons, confetti
     let prevTarget = live.current.pct
     glow.current.warm = glowSprite('253,230,138')
@@ -178,39 +216,67 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       world.lamps = []
       for (let x = 50, i = 0; x < W; x += 110 + rnd(i + 500) * 60, i++) world.lamps.push(x)
       world.lights = [W * 0.16, W * 0.44, W * 0.9].map((x) => (world.river && x > world.river.x0 - 20 && x < world.river.x1 + 20 ? world.river.x0 - 40 : x))
+      world.trees = []  // trees along the pavement, kept clear of the river and the street lamps
+      for (let x = 24, i = 0; x < W - 10; x += 42 + rnd(i + 4000) * 85, i++) {
+        if (world.river && x > world.river.x0 - 14 && x < world.river.x1 + 14) continue
+        if (world.lamps.some((lx) => Math.abs(lx + 2 - x) < 16)) continue
+        world.trees.push({ x, pine: rnd(i + 4010) < 0.3, h: 0.8 + rnd(i + 4020) * 0.5, ph: rnd(i + 4030) * 6.3, v: rnd(i + 4040) * 2 - 1, d: rnd(i + 4050) * 0.5 })
+      }
       bld = build(W, H, world.river)
     }
     const initWorld = () => {
-      cars.forEach((c) => { c.x = rnd(c.i + 950) * (W + 120) - 60 })
+      for (const dir of [1, -1]) {  // spread each lane's cars out evenly so none start inside another
+        const lane = cars.filter((c) => c.dir === dir)
+        lane.forEach((c, k) => { c.x = ((k + 0.3 + rnd(c.i + 950) * 0.4) * (W + 160)) / lane.length - 80; c.v = c.base * 0.8 })
+      }
       people.forEach((q) => { q.x = rnd(q.i + 1920) * W })
     }
     // the light cycle: green, amber, then red (cars brake for amber and red)
     const lightAt = (t) => { const m = (t % 20000) / 1000; return m < 12 ? 'g' : m < 14 ? 'a' : 'r' }
-    // cars brake for a red light and keep a gap behind the car in front, then pull away when it turns green
+    // Cars follow the Intelligent Driver Model: each has a limited acceleration and braking, wants a gap that grows with its speed, and
+    // brakes for the car ahead, a red light (an amber one only if it can still stop) or a lifted bridge, which counts as a stopped car.
+    const ACC = 90, BRK = 120, HEADWAY = 1.0, MINGAP = 7  // px/s², px/s², seconds, px
     const step = (t, sec) => {
-      const stop = lightAt(t) !== 'g'
+      const ls = lightAt(t)
       for (const c of cars) {
-        let target = c.base
         const front = c.x + c.dir * c.len
-        if (stop) for (const xl of world.lights) {
-          const d = c.dir * (xl - front)
-          if (d > -1 && d < 34) target = Math.min(target, c.base * Math.max(0, (d - 3) / 30))
-        }
+        let gap = 1e5, vLead = c.base
         for (const o of cars) {
           if (o === c || o.dir !== c.dir) continue
-          const gap = c.dir * (o.x - front)
-          if (gap > 0 && gap < 40) target = Math.min(target, o.v, c.base * Math.max(0, (gap - 5) / 35))
+          const d = c.dir * (o.x - front)
+          if (d > 0 && d < gap) { gap = d; vLead = o.v }
         }
-        c.v += (target - c.v) * (1 - Math.exp(-sec / 0.35))
+        const stops = []
+        if (ls !== 'g') for (const xl of world.lights) stops.push(xl)
+        if (world.river && bo > 0.12) stops.push(c.dir > 0 ? world.river.x0 - 10 : world.river.x1 + 10)
+        for (const xl of stops) {
+          const d = c.dir * (xl - front) - 2
+          if (d < -3 || d > gap) continue
+          if (ls === 'a' && d < (c.v * c.v) / (2 * BRK) + 2) continue  // too close to stop on amber: drive through
+          gap = Math.max(d, 0.1); vLead = 0
+        }
+        const sStar = MINGAP + c.v * HEADWAY + (c.v * (c.v - vLead)) / (2 * Math.sqrt(ACC * BRK))
+        let a = ACC * (1 - (c.v / c.base) ** 4 - (sStar / Math.max(gap, 0.1)) ** 2)
+        a = Math.max(-BRK * 1.6, Math.min(ACC, a))
+        c.acc = a; c.v = Math.max(0, c.v + a * sec)
         c.x += c.dir * c.v * sec
-        if (c.dir > 0 && c.x > W + 60) c.x = -60 - rnd(c.i + t) * 80
-        if (c.dir < 0 && c.x < -60) c.x = W + 60 + rnd(c.i + t) * 80
+        // a car that leaves one side comes back at the other, behind the last car there (never on top of it)
+        if (c.dir > 0 && c.x > W + 60) { c.x = Math.min(-60, ...cars.filter((o) => o !== c && o.dir > 0).map((o) => o.x - o.len * 2 - 24)) - rnd(c.i + t) * 40; c.v = c.base * 0.8 }
+        if (c.dir < 0 && c.x < -60) { c.x = Math.max(W + 60, ...cars.filter((o) => o !== c && o.dir < 0).map((o) => o.x + o.len * 2 + 24)) + rnd(c.i + t) * 40; c.v = c.base * 0.8 }
       }
       for (const q of people) { q.x += q.dir * q.spd * sec; if (q.x > W + 10) q.x = -10; if (q.x < -10) q.x = W + 10 }
     }
 
     const drawLayer = (li, p, t, c, ox, boost) => {
       const L = LAYERS[li], list = bld[li], base = H - ROAD, ws = L.ws
+      // a facade gets depth: sky light at the top fading to shadow, a darker side away from the light, and thin floor lines
+      const facade = (fx, fy, fw, fh) => {
+        g.globalAlpha = L.body * 0.9 * (1 - 0.35 * night); g.drawImage(shade, fx, fy, fw, fh)
+        g.globalAlpha = 0.13; g.fillStyle = '#000'; g.fillRect(fx + fw * 0.82, fy, fw * 0.18, fh)
+        g.globalAlpha = 0.07; for (let yy = base - 6 - ws; yy > fy + 6; yy -= (ws + 5) * 3) g.fillRect(fx, yy, fw, 1)
+        g.globalAlpha = 0.2; g.fillRect(fx - 0.5, fy, fw + 1, 1.6)  // the roof ledge
+      }
+      const glassC = mix('#7f9cc4', '#08152b', night)
       // bodies and roofs
       for (const b of list) {
         const gr = ss(p * 1.3 - b.delay), h = b.full * (0.3 + 0.7 * gr), top = base - h, x = b.x + ox
@@ -222,6 +288,25 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
         } else if (b.style === 2) {  // slanted roof
           g.beginPath(); g.moveTo(x, base + 10); g.lineTo(x, top); g.lineTo(x + b.w, top + h * 0.14); g.lineTo(x + b.w, base + 10); g.fill()
         } else g.fillRect(x, top, b.w, h + 10)
+        if (gr > 0.3) {
+          if (b.style === 1) { facade(x, base - h * 0.72, b.w, h * 0.72 + 10); facade(x + b.w * 0.19, top, b.w * 0.62, h * 0.28 + 1) }
+          else if (b.style === 2) facade(x, top + h * 0.14, b.w, h * 0.86 + 10)
+          else facade(x, top, b.w, h + 10)
+        }
+        if (li === 2 && gr > 0.6) {  // a lit shopfront with a striped awning at the foot of each near building
+          const sh = rnd(b.x * 0.37 + 9)
+          g.globalAlpha = 0.14 + 0.4 * night; g.fillStyle = c.warm; g.fillRect(x + 3, base - 11, b.w - 6, 9)
+          g.globalAlpha = 0.5; g.fillStyle = '#0b1a2b'; g.fillRect(x + b.w * 0.5 - 1.5, base - 11, 3, 9)
+          g.globalAlpha = 0.4; for (let dx = x + 3 + 9; dx < x + b.w - 8; dx += 9) if (Math.abs(dx - (x + b.w * 0.5)) > 4) g.fillRect(dx, base - 11, 1, 9)  // shop window frames
+          g.globalAlpha = 0.75 - 0.2 * night; g.fillStyle = NEON[Math.floor(sh * 4)]; g.fillRect(x + 3, base - 14, b.w - 6, 3)
+          g.globalAlpha = 0.3; g.fillStyle = '#ffffff'; for (let sx2 = x + 3; sx2 < x + b.w - 7; sx2 += 8) g.fillRect(sx2, base - 14, 4, 3)
+          if (night > 0.05) { g.globalAlpha = night * 0.4; g.drawImage(glow.current.warm, x + b.w * 0.5 - b.w * 0.55, base - 24, b.w * 1.1, 26) }
+        }
+        if (snowCap > 0.02 && gr > 0.5) {  // winter: a white cap of snow on each roof
+          g.globalAlpha = Math.min(1, L.body * 1.25) * snowCap; g.fillStyle = mix('#ffffff', '#c9d9ee', night * 0.5)
+          g.fillRect(x - 1, (b.style === 1 ? base - h * 0.72 : top) - 1, b.w + 2, 2.4 * snowCap)
+          if (b.style === 1) g.fillRect(x + b.w * 0.19 - 1, top - 1, b.w * 0.62 + 2, 2.4 * snowCap)
+        }
         if (b.style === 3) {  // spire with a light at the tip
           const len = (10 + ws * 1.6) * gr
           g.fillRect(x + b.w / 2 - 0.5, top - len, 1, len)
@@ -238,25 +323,40 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           g.globalAlpha = L.body; g.fillStyle = c[L.key]; g.fillRect(sx + 2, sy + 9, 1, 6); g.fillRect(sx + b.sign.w - 3, sy + 9, 1, 6)
           g.globalAlpha = 0.16 * night * fl; g.fillStyle = b.sign.col; g.fillRect(sx - 3, sy - 3, b.sign.w + 6, 15)
           g.globalAlpha = (0.4 + 0.55 * night * fl) * L.body / 0.72; g.fillRect(sx, sy, b.sign.w, 9)
-          g.globalAlpha = 0.55; g.fillStyle = '#ffffff'; g.fillRect(sx + 3, sy + 2.5, b.sign.w - 6, 1); g.fillRect(sx + 3, sy + 5.2, (b.sign.w - 6) * 0.55, 1)
+          if (b.sign.w >= 16) {  // the sign shows a short word, fading from one to the next ("WIN!" when the day is done)
+            const q0 = still ? 0 : t / 4200 + b.x * 0.013, wd = p >= 0.99 ? 'WIN!' : WORDS[Math.floor(q0) % WORDS.length]
+            g.globalAlpha = 0.92 * (still ? 1 : ss((q0 % 1) * 5) * ss((1 - (q0 % 1)) * 5)); g.fillStyle = '#ffffff'
+            g.font = '700 6.5px system-ui,sans-serif'; g.textAlign = 'center'; g.fillText(wd, sx + b.sign.w / 2, sy + 6.8, b.sign.w - 4)
+          } else { g.globalAlpha = 0.55; g.fillStyle = '#ffffff'; g.fillRect(sx + 3, sy + 2.5, b.sign.w - 6, 1); g.fillRect(sx + 3, sy + 5.2, (b.sign.w - 6) * 0.55, 1) }
         }
         g.globalAlpha = L.body * 0.35; g.fillStyle = c.edge; g.fillRect(x, top, 1, h)  // a thin highlight on the lit edge
+        if (b.smoke >= 0 && gr > 0.5) {  // a chimney with soft smoke curling up and drifting
+          const cx = x + b.w * (0.6 + 0.25 * b.smoke), ty = b.style === 1 ? top : top
+          g.globalAlpha = L.body; g.fillStyle = c[L.key]; g.fillRect(cx - 1.5, ty - 6, 3, 6)
+          g.fillStyle = mix('#ffffff', '#9fb3cc', night)
+          for (let j = 0; j < 5; j++) {
+            const u = still ? j / 5 : ((t / 5200 + j / 5 + b.smoke) % 1)
+            g.globalAlpha = Math.min(1, u * 8) * (1 - u) * (0.4 - 0.1 * night) * (li === 2 ? 1 : 0.75) * ss((gr - 0.5) / 0.4)
+            g.beginPath(); g.arc(cx + Math.sin(u * 5 + j + b.smoke * 9) * 3 * u + u * u * (22 + 46 * wn), ty - 8 - (1 - (1 - u) ** 2) * 42, 2.6 + u * 8.5, 0, 7); g.fill()
+          }
+        }
       }
       // windows: each is lit once progress passes its own fixed rank, fading in smoothly
       const sweep = (t / 7000) % 1.4 - 0.2
       for (const b of list) {
         const x = b.x + ox, top = base - b.h, stepH = b.style === 1 ? b.h * 0.72 : b.h
         for (let r = 0; r < b.rows; r++) {
-          const wy = base - 6 - ws - r * (ws + 5)
+          const wy = base - (li === 2 ? 20 : 6) - ws - r * (ws + 5)
           if (wy < top + 6) break
           const upper = b.style === 1 && base - wy > stepH
           for (let cc = 0; cc < b.cols; cc++) {
             const wx = x + b.pad + cc * (ws + 3)
             if (upper && (wx < x + b.w * 0.19 + 2 || wx + ws > x + b.w * 0.81 - 2)) continue
             if (b.style === 2 && wy < top + b.h * 0.14 * ((wx - x) / b.w) + 6) continue
+            g.globalAlpha = L.body * (0.55 - 0.15 * night); g.fillStyle = glassC; g.fillRect(wx, wy, ws - 2, ws)  // the pane itself: dark or sky-tinted glass even when unlit
             const n = r * b.cols + cc, k = b.ks[n], u = ss((p - k) / 0.1)
             if (u <= 0.01) continue
-            let a = L.win * u
+            let a = L.win * u * (1 + 0.7 * gloomNow)  // more rooms are lit when it is grey outside
             if (!still && b.ph[n] > 0.85) {  // a few rooms dim now and then, like someone switching a light off
               const q = Math.sin(t / (1500 + b.ph[n] * 3000) + b.ph[n] * 90)
               if (q > 0.6) a *= 1 - 0.8 * ss((q - 0.6) / 0.25)
@@ -268,7 +368,7 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
               g.drawImage(k < 0.3 ? glow.current.warm : glow.current.acc, wx + (ws - 2) / 2 - sz / 2, wy + ws / 2 - sz / 2, sz, sz)
             }
             g.globalAlpha = a > 1 ? 1 : a
-            g.fillStyle = k < 0.3 ? c.warm : c.win
+            g.fillStyle = k > 0.92 ? '#dbeafe' : k < 0.3 ? c.warm : c.win
             g.fillRect(wx, wy, ws - 2, ws)
           }
         }
@@ -297,6 +397,13 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       const wEase = 1 - Math.exp(-dt / 1500)
       wr += ((wk === 'rain' ? 1 : 0) - wr) * wEase; wsn += ((wk === 'snow' ? 1 : 0) - wsn) * wEase; wf += ((wk === 'fog' ? 1 : 0) - wf) * wEase
       const gloom = Math.min(1, wr * 0.75 + wsn * 0.4 + wf * 0.5)
+      gloomNow = gloom
+      // wind eases between calm, breeze and windy; wph is a clock that runs faster in wind, so clouds speed up without jumping
+      wn += ((WIND[live.current.wind] ?? 0) - wn) * (still ? 1 : 1 - Math.exp(-dt / 1200)); wph += Math.min(dt, 100) / 1000 * (1 + 2.5 * wn)
+      // season (by the calendar, or chosen): the old season's falling things fade out before the new one's fade in; winter puts snow on the roofs
+      const sT = live.current.season === 'auto' ? SEASON_BY_MONTH[new Date().getMonth()] : live.current.season, sEase = still ? 1 : 1 - Math.exp(-dt / 700)
+      if (sT !== sKind) { sPart += (0 - sPart) * sEase; if (sPart < 0.03) sKind = sT } else sPart += (1 - sPart) * sEase
+      snowCap += ((sT === 'winter' ? 1 : 0) - snowCap) * (still ? 1 : 1 - Math.exp(-dt / 900))
 
       // --- sky, following the real clock (dawn and dusk glow, dim at night) ---
       todAmt += ((live.current.tod ? 1 : 0) - todAmt) * (still ? 1 : 1 - Math.exp(-dt / 700))
@@ -318,11 +425,11 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       if (gloom > 0.02) {  // overcast: a grey veil over the sky
         g.globalAlpha = 0.17 * gloom; g.fillStyle = mix('#7b8da3', '#0b1a2b', night); g.fillRect(0, 0, W, H * 0.8)
       }
-      g.fillStyle = mix('#ffffff', '#7f9cc4', night)  // clouds drift all the time: white by day, dim blue-grey at night
+      g.fillStyle = mix(mix('#ffffff', '#7f9cc4', night), mix('#8995a6', '#46556b', night), wr * 0.85)  // clouds drift all the time: white by day, dim blue-grey at night, heavy grey in rain
       for (let i = 0; i < 7; i++) {
         const cw = 90 + rnd(i + 300) * 110, cy = H * (0.06 + rnd(i + 400) * 0.36)
-        const cx = ((rnd(i + 500) * (W + 400) + (still ? 0 : t / 1000) * (8 + rnd(i + 600) * 10)) % (W + 400)) - 200
-        g.globalAlpha = (0.35 + rnd(i + 700) * 0.25) * (1 - 0.5 * night)
+        const cx = ((rnd(i + 500) * (W + 400) + (still ? 0 : wph) * (8 + rnd(i + 600) * 10)) % (W + 400)) - 200
+        g.globalAlpha = Math.min(1, (0.35 + rnd(i + 700) * 0.25) * (1 - 0.5 * night) + 0.2 * wr)
         for (const [dx, dy, r] of [[0, 0, 0.32], [-0.3, 0.06, 0.22], [0.3, 0.05, 0.25], [0.08, -0.12, 0.24]]) {
           g.beginPath(); g.ellipse(cx + dx * cw, cy + dy * cw, r * cw, r * cw * 0.6, 0, 0, 7); g.fill()
         }
@@ -333,6 +440,27 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           g.globalAlpha = night * (0.25 + 0.5 * (still ? 0.6 : 0.5 + 0.5 * Math.sin(t / 900 + i * 2.3)))
           g.fillRect(rnd(i) * W, rnd(i + 200) * H * 0.5, 1.5, 1.5)
         }
+      }
+      // northern lights: slow green and violet curtains high in the night sky, only when it is clear; they come and go
+      const auT = night * (1 - gloom) * (0.88 + 0.12 * Math.sin(t / 20000))  // always there on clear nights, breathing a little
+      au += (auT - au) * (still ? 1 : 1 - Math.exp(-dt / 1200))
+      // when the colours change, the old ones fade out while the new ones fade in
+      if (live.current.aurora !== auCur) { auPrev = auCur; auCur = live.current.aurora; auX = still ? 1 : 0 }
+      auX += (1 - auX) * (still ? 1 : 1 - Math.exp(-dt / 350)); if (auX > 0.995) auX = 1
+      if (au > 0.01) {
+        g.globalCompositeOperation = 'lighter'
+        const skyOf = (id) => (AURORA_THEMES.find((a) => a.id === id) || AURORA_THEMES[0]).sky
+        for (let k = 0; k < 3; k++) {
+          const tt = still ? 0 : t, by = H * (0.14 + 0.08 * k)
+          const layers = auX < 1 ? [[strip(skyOf(auPrev)[k]), 1 - auX], [strip(skyOf(auCur)[k]), auX]] : [[strip(skyOf(auCur)[k]), 1]]
+          for (let x = -10; x < W + 10; x += 5) {
+            const y = by + Math.sin(x / W * 3 + tt / 9000 * (1 + k * 0.3) + k * 2) * H * 0.04 + Math.sin(x / 130 + tt / 5000) * 8
+            const hh = H * (0.15 + 0.06 * Math.sin(x / 90 + tt / 4000 + k))
+            const a0 = au * 0.36 * (0.3 + 0.7 * Math.sin(x / 170 + tt / 7000 + k * 1.7) ** 2)
+            for (const [sprite, wgt] of layers) { g.globalAlpha = a0 * wgt; g.drawImage(sprite, x, y - hh, 16, hh) }
+          }
+        }
+        g.globalCompositeOperation = 'source-over'
       }
       if (!still) {
         // a shooting star now and then, at night
@@ -383,7 +511,7 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       if (!still && (t < fw.until || fw.rockets.length || fw.bursts.length || fw.flashes.length)) {
         const sec = Math.min(dt, 100) / 1000, nf = night
         if (t < fw.until && t >= fw.next && night > 0.35) {
-          fw.rockets.push({ x: W * (0.15 + 0.7 * Math.random()), y: H - ROAD, ty: H * (0.2 + 0.22 * Math.random()), hist: [] })
+          { const ty = H * (0.2 + 0.22 * Math.random()); fw.rockets.push({ x: W * (0.15 + 0.7 * Math.random()), y: H - ROAD, ty, vy: -Math.sqrt(2 * 420 * (H - ROAD - ty)), hist: [] }) }  // launch speed chosen so gravity brings it to a stop at ty
           fw.next = t + 700 + Math.random() * 600
         }
         g.globalCompositeOperation = 'lighter'
@@ -391,12 +519,12 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
         for (let i = fw.rockets.length - 1; i >= 0; i--) {
           const r = fw.rockets[i]
           r.hist.push(r.x, r.y); if (r.hist.length > 20) r.hist.splice(0, 2)
-          r.y -= Math.max(70, (r.y - r.ty) * 3.4) * sec  // it slows down smoothly as it nears the top
+          r.vy += 420 * sec; r.y += r.vy * sec  // gravity (420 px/s²) slows it on the way up
           r.x += Math.sin(t / 90 + i) * 0.25
           g.strokeStyle = '#fde68a'; g.lineWidth = 1.5
           for (let k = 2; k < r.hist.length; k += 2) { g.globalAlpha = 0.7 * nf * (k / r.hist.length); g.beginPath(); g.moveTo(r.hist[k - 2], r.hist[k - 1]); g.lineTo(r.hist[k], r.hist[k + 1]); g.stroke() }
           g.globalAlpha = nf; g.drawImage(sp('253,230,138'), r.x - 4, r.y - 4, 8, 8)
-          if (r.y <= r.ty + 2) {  // burst: the lights start expanding into the next shape at once
+          if (r.vy >= -12) {  // burst at the top of the arc: the lights start expanding into the next shape at once
             if (!fw.bag.length) fw.bag = [...SHAPES].sort(() => Math.random() - 0.5)
             const kind = fw.bag.pop()
             fw.bursts.push({ x: r.x, y: r.y, age: 0, rgb: SHAPE_RGB[kind], R: Math.max(70, Math.min(130, Math.min(W, H) * 0.16)), held: 0,
@@ -446,18 +574,74 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       if (cb) {
         const ca = 1 - ss((cb.gr - 0.88) / 0.12)
         if (ca > 0.02) {
-          const cx = cb.x - mx * LAYERS[2].par + cb.w * 0.3, top = H - ROAD - cb.h, mh = 44
+          const cx = cb.x - mx * LAYERS[2].par + cb.w * 0.3, top = H - ROAD - cb.h, mh = 58
           const jx = cx + 58 * Math.cos(still ? 1 : t / 5200 + 1), cable = 14 + (still ? 0 : 8 * Math.sin(t / 2300))
+          if (!still && dt > 0) {  // the payload is a damped pendulum driven by the jib tip's acceleration: s'' = -(g/L)s - c s' - a
+            const s2 = Math.min(dt, 100) / 1000, vx = (jx - cr.pjx) / s2, ax = (vx - cr.pvx) / s2
+            if (cr.pjx) { cr.v += (-(300 / (cable + 8)) * cr.s - 0.9 * cr.v - Math.max(-60, Math.min(60, ax))) * s2; cr.s = Math.max(-9, Math.min(9, cr.s + cr.v * s2)) }
+            cr.pjx = jx; cr.pvx = vx
+          }
+          const hx = jx + cr.s
           g.globalAlpha = ca * 0.85; g.fillStyle = g.strokeStyle = '#f59e0b'; g.lineWidth = 2
           g.fillRect(cx - 1, top - mh, 2, mh)
           g.beginPath(); g.moveTo(cx - (jx - cx) * 0.3, top - mh); g.lineTo(jx, top - mh); g.stroke()
           g.lineWidth = 1; g.globalAlpha = ca * 0.6
-          g.beginPath(); g.moveTo(jx, top - mh); g.lineTo(jx, top - mh + cable); g.stroke()
-          g.fillRect(jx - 2, top - mh + cable, 4, 3)
+          g.beginPath(); g.moveTo(jx, top - mh); g.lineTo(hx, top - mh + cable); g.stroke()
+          g.fillRect(hx - 2, top - mh + cable, 4, 3)
           if (!still) { g.globalAlpha = ca * Math.max(0, Math.sin(t / 700)) ** 3; g.fillStyle = '#f43f5e'; g.beginPath(); g.arc(cx, top - mh - 3, 2, 0, 7); g.fill() }
         }
       }
 
+      // aircraft: a hot-air balloon drifts across by day; at night a helicopter sweeps a searchlight over the rooftops
+      if (!still) {
+        const bc = wph / 80, bf = bc - Math.floor(bc)
+        if (bf < 0.75 && night < 0.95) {
+          const u = bf / 0.75, bdir = Math.floor(bc) % 2 ? -1 : 1, bx = bdir > 0 ? -40 + u * (W + 80) : W + 40 - u * (W + 80), by = H * 0.3 + Math.sin(u * 9) * 7 + (Math.floor(bc) % 3) * 16
+          const ba = ss(u * 8) * ss((1 - u) * 8) * (1 - night) * (1 - 0.5 * gloom), r = 15
+          if (ba > 0.02) {
+            g.save(); g.translate(bx, by); g.rotate(Math.sin(wph / 2.2) * 0.05 + wn * 0.08 * bdir); g.globalAlpha = ba
+            g.save(); g.beginPath(); g.ellipse(0, 0, r * 0.9, r * 1.05, 0, 0, 7); g.moveTo(-r * 0.55, r * 0.8); g.lineTo(-4, r * 1.55); g.lineTo(4, r * 1.55); g.lineTo(r * 0.55, r * 0.8); g.closePath(); g.clip()
+            const bands = ['#ef4444', '#f59e0b', '#ffffff', '#3b82f6', '#22c55e']
+            for (let i = 0; i < 5; i++) { g.fillStyle = bands[i]; g.fillRect(-r + i * (2 * r) / 5, -r * 1.1, (2 * r) / 5 + 0.6, r * 2.8) }
+            g.globalAlpha = ba * 0.22; g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(-r * 0.3, -r * 0.3, r * 0.22, r * 0.5, 0.3, 0, 7); g.fill()
+            g.restore()
+            g.globalAlpha = ba * 0.8; g.strokeStyle = '#475569'; g.lineWidth = 0.7
+            g.beginPath(); g.moveTo(-4, r * 1.55); g.lineTo(-3.5, r * 1.95); g.moveTo(4, r * 1.55); g.lineTo(3.5, r * 1.95); g.stroke()
+            g.globalAlpha = ba; g.fillStyle = '#92400e'; g.fillRect(-4, r * 1.95, 8, 5.5)
+            const fk = 0.75 + 0.25 * Math.sin(t / 90)
+            g.globalAlpha = ba * 0.9 * fk; g.fillStyle = '#fb923c'; g.beginPath(); g.arc(0, r * 1.5, 1.7 * fk, 0, 7); g.fill()
+            g.restore()
+          }
+        }
+        const hc = wph / 70, hf = hc - Math.floor(hc)
+        if (night > 0.4 && hf < 0.4) {
+          const u = hf / 0.4, hd = Math.floor(hc) % 2 ? -1 : 1, hx = hd > 0 ? -50 + u * (W + 100) : W + 50 - u * (W + 100), hy = H * 0.22 + Math.sin(u * 6) * 8
+          const fa = ss(u * 8) * ss((1 - u) * 8) * night * (1 - 0.6 * gloom)
+          if (fa > 0.02) {
+            const tgx = hx + Math.sin(wph / 1.6) * Math.min(170, W * 0.14) + hd * 40, tgy = H - ROAD - H * 0.05  // where the beam lands: it swings side to side
+            g.globalCompositeOperation = 'lighter'
+            const bm = g.createLinearGradient(hx, hy + 4, tgx, tgy)
+            bm.addColorStop(0, 'rgba(255,248,215,.6)'); bm.addColorStop(1, 'rgba(255,248,215,0)')
+            g.globalAlpha = fa * 0.4; g.fillStyle = bm
+            g.beginPath(); g.moveTo(hx, hy + 4); g.lineTo(tgx - 24, tgy); g.lineTo(tgx + 24, tgy); g.closePath(); g.fill()
+            g.globalAlpha = fa * 0.45; g.drawImage(sp('255,248,215'), tgx - 30, tgy - 13, 60, 26)  // the pool of light
+            g.globalCompositeOperation = 'source-over'
+            g.save(); g.translate(hx, hy); g.scale(hd, 1); g.rotate(0.1); g.globalAlpha = fa  // pitched forward, as helicopters fly
+            g.fillStyle = '#475569'; g.beginPath(); g.ellipse(0, 0, 11, 5.5, 0, 0, 7); g.fill()
+            g.beginPath(); g.moveTo(-8, -2); g.lineTo(-25, -1); g.lineTo(-25, 1.2); g.lineTo(-8, 3); g.closePath(); g.fill()  // tail
+            g.fillRect(-26, -7, 2.2, 8)  // tail fin
+            g.fillStyle = '#bae6fd'; g.globalAlpha = fa * 0.85; g.beginPath(); g.ellipse(5.5, -1.2, 4.5, 3.2, 0, 0, 7); g.fill()  // cockpit glass
+            g.globalAlpha = fa; g.fillStyle = '#64748b'; g.fillRect(-8, 6.6, 16, 1); g.fillRect(-5, 5, 1, 2); g.fillRect(4, 5, 1, 2)  // skids
+            g.fillStyle = '#334155'; g.fillRect(-0.7, -8.5, 1.4, 3.4)
+            const rl = 24 * Math.abs(Math.cos(t / 40)) + 4  // the main rotor, a blur of spinning blades
+            g.strokeStyle = '#cbd5e1'; g.lineWidth = 1.3; g.globalAlpha = fa * 0.8; g.beginPath(); g.moveTo(-rl, -8.7); g.lineTo(rl, -8.7); g.stroke()
+            g.globalAlpha = fa * 0.1; g.fillStyle = '#cbd5e1'; g.beginPath(); g.ellipse(0, -8.7, 25, 2.4, 0, 0, 7); g.fill()
+            if (t % 1000 < 130) { g.globalAlpha = fa; g.fillStyle = '#ef4444'; g.beginPath(); g.arc(-25, -7.5, 1.7, 0, 7); g.fill() }
+            if (t % 1300 < 90) { g.globalAlpha = fa; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(0, 6, 1.6, 0, 7); g.fill() }
+            g.restore()
+          }
+        }
+      }
       // river with boats and reflections of the lit windows
       const rv = world.river
       if (rv) {
@@ -473,9 +657,11 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
         }
         g.fillStyle = '#ffffff'; g.globalAlpha = 0.22
         for (let k = 0; k < 10; k++) g.fillRect(rv.x0 + ((rnd(k + 1500) * ww + (still ? 0 : t / 1000) * (6 + rnd(k + 1600) * 8)) % ww), wy + 3 + rnd(k + 1700) * 16, 6, 1)
+        let sailX = -1e9
         for (let i = 0; i < 2; i++) {  // a sailboat and a small ferry
-          const dir = i ? -1 : 1, pos = ((i * 0.5 * ww + (still ? 0 : t / 1000) * (9 + i * 5)) % (ww + 60)) - 30
-          const bx = dir > 0 ? rv.x0 + pos : rv.x1 - pos, by = wy + 15 + i * 3
+          const dir = i ? -1 : 1, pos = ((i * 0.5 * ww + (still ? 0 : i === 0 ? wph * 0.5 : t / 1000) * (9 + i * 5)) % (ww + 60)) - 30
+          const bx = dir > 0 ? rv.x0 + pos : rv.x1 - pos, by = wy + 15 + i * 3 + (still ? 0 : Math.sin(t / 650 + i * 2) * 0.9)
+          if (i === 0) sailX = bx
           g.globalAlpha = 0.3; g.fillStyle = '#ffffff'; g.fillRect(bx - dir * 18, by, 12, 0.8)  // wake
           g.globalAlpha = 0.95; g.fillStyle = mix('#e8eef6', '#8aa0bb', night)
           g.beginPath(); g.moveTo(bx - 7, by - 3); g.lineTo(bx + 7, by - 3); g.lineTo(bx + 5, by); g.lineTo(bx - 5, by); g.closePath(); g.fill()
@@ -484,6 +670,19 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           if (night > 0.05) { g.globalAlpha = night * 0.9; g.drawImage(glow.current.warm, bx + dir * 7 - 7, by - 10, 14, 14) }
         }
         g.restore()
+        {  // a drawbridge across the river: both leaves lift when the sailboat's mast comes near
+          const mid = (rv.x0 + rv.x1) / 2, half = (rv.x1 - rv.x0) / 2, deckY = wy + 5
+          const bt = still ? 0 : ss(1 - Math.abs(sailX - mid) / (ww * 0.2 + 28))
+          if (still) { bo = bt; bv = 0 } else { const s2 = Math.min(dt, 100) / 1000; bv += (26 * (bt - bo) - 6 * bv) * s2; bo += bv * s2; if (bo < 0) { bo = 0; bv = 0 } }
+          const ang = bo * 1.15
+          g.lineCap = 'round'; g.strokeStyle = mix('#94a3b8', '#3b4a63', night); g.lineWidth = 2.6; g.globalAlpha = 0.95
+          g.beginPath(); g.moveTo(rv.x0, deckY); g.lineTo(rv.x0 + Math.cos(ang) * half, deckY - Math.sin(ang) * half)
+          g.moveTo(rv.x1, deckY); g.lineTo(rv.x1 - Math.cos(ang) * half, deckY - Math.sin(ang) * half); g.stroke()
+          g.globalAlpha = 0.9; g.fillStyle = mix('#7f90ab', '#1d3552', night); g.fillRect(rv.x0 - 5, wy - 4, 5, 22); g.fillRect(rv.x1, wy - 4, 5, 22)  // the two towers
+          const open = bo > 0.1, bl = still ? 1 : 0.5 + 0.5 * Math.sin(t / 220)
+          g.fillStyle = open ? '#ef4444' : '#22c55e'; g.globalAlpha = open ? 0.4 + 0.6 * bl : 0.9
+          g.beginPath(); g.arc(rv.x0 - 2.5, wy - 6, 1.6, 0, 7); g.arc(rv.x1 + 2.5, wy - 6, 1.6, 0, 7); g.fill()  // red while open, green when closed
+        }
         g.globalAlpha = 0.55; g.fillStyle = c.near; g.fillRect(rv.x0 - 3, wy + 4, 3, 18); g.fillRect(rv.x1, wy + 4, 3, 18)  // banks
       }
       // an elevated track with a train now and then
@@ -507,11 +706,73 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       g.globalAlpha = 0.5; g.fillStyle = mix('#c4d0e0', '#1a3a5c', night); g.fillRect(0, H - ROAD - 2, W, 2)
       const lampAmt = Math.max(night, cn, dusk * 0.7)
       for (const lx of world.lamps) {
+        g.save(); g.translate(lx, H - ROAD); g.scale(CAR_Z, CAR_Z); g.translate(-lx, -(H - ROAD))
         g.globalAlpha = 0.7; g.fillStyle = mix('#64748b', '#0b1a2b', night * 0.5); g.fillRect(lx, H - ROAD - 17, 1.2, 17); g.fillRect(lx, H - ROAD - 17, 5, 1.2)
         g.globalAlpha = 0.9; g.fillStyle = lampAmt > 0.3 ? '#fff4c2' : '#94a3b8'; g.fillRect(lx + 3, H - ROAD - 16, 3, 1.5)
         if (lampAmt > 0.05) {
           g.globalAlpha = lampAmt * 0.9; g.drawImage(glow.current.warm, lx + 4.5 - 15, H - ROAD - 15 - 15, 30, 30)
           g.globalAlpha = lampAmt * 0.12; g.fillStyle = '#fde68a'; g.beginPath(); g.ellipse(lx + 4.5, H - ROAD, 16, 3, 0, 0, 7); g.fill()
+        }
+        g.restore()
+      }
+      {  // trees along the pavement: blossom in spring, green in summer, autumn colours, bare with snow in winter; they sway more in wind
+        const sc = Math.max(0.75, Math.min(1.25, H / 760)) * 1.45, base = H - ROAD, ease = still ? 1 : 1 - Math.exp(-dt / 900), dk = night * 0.55
+        const tT = sT === 'spring' ? [120, 196, 108] : sT === 'autumn' ? [214, 118, 30] : [34, 150, 70]
+        for (let i = 0; i < 3; i++) treeCol[i] += (tT[i] - treeCol[i]) * ease
+        leaf += ((sT === 'winter' ? 0 : 1) - leaf) * ease
+        const wood = mix('#7c4a21', '#2b1b10', dk), f = 1 - dk * 0.62, sec3 = Math.min(dt, 100) / 1000
+        for (const tr of world.trees) {
+          const gw = 0.5 + 0.5 * ss(shown * 1.5 - tr.d), s2 = sc * tr.h * gw
+          const sway = still ? 0 : Math.sin(wph * 1.4 + tr.ph) * (1 + 3.5 * wn) * s2, th = (tr.pine ? 8 : 13) * s2
+          g.globalAlpha = 0.16; g.fillStyle = '#000'; g.beginPath(); g.ellipse(tr.x + 3, base + 1, 10 * s2, 2, 0, 0, 7); g.fill()
+          g.globalAlpha = 0.95; g.fillStyle = wood; g.fillRect(tr.x - 1.5 * s2, base - th, 3 * s2, th)
+          if (tr.pine) {  // evergreen: three tiers, white tips in winter
+            for (let k = 0; k < 3; k++) {
+              const w = (13 - k * 3.2) * s2, y0 = base - th - k * 9 * s2, tx = tr.x + sway * (0.4 + k * 0.3)
+              g.globalAlpha = 0.95; g.fillStyle = mix('#1f7a3f', '#0b2a1a', dk)
+              g.beginPath(); g.moveTo(tr.x - w, y0); g.lineTo(tx, y0 - 14 * s2); g.lineTo(tr.x + w, y0); g.closePath(); g.fill()
+              if (snowCap > 0.05) { g.globalAlpha = 0.85 * snowCap; g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(tx - w * 0.45, y0 - 7.7 * s2); g.lineTo(tx, y0 - 14 * s2); g.lineTo(tx + w * 0.45, y0 - 7.7 * s2); g.closePath(); g.fill() }
+            }
+          } else {
+            const cy = base - th - 7 * s2, r = 9.5 * s2, cx = tr.x + sway
+            if (leaf < 0.96) {  // bare branches (with a little snow on them in winter)
+              g.globalAlpha = 0.9 * (1 - leaf); g.strokeStyle = wood; g.lineWidth = 1.2 * s2; g.beginPath()
+              for (const [dx, dy] of BRANCH) { g.moveTo(tr.x, base - th * 0.85); g.lineTo(cx + dx * s2, base - th + (dy + 6) * s2) }
+              g.stroke()
+              if (snowCap > 0.05) { g.globalAlpha = 0.9 * snowCap * (1 - leaf); g.fillStyle = '#ffffff'; for (const [dx, dy] of BRANCH) g.fillRect(cx + dx * s2 - 1.6, base - th + (dy + 6) * s2 - 1.6, 3.2, 1.8) }
+            }
+            if (leaf > 0.02) {  // the canopy: three overlapping rounds with a lighter patch
+              g.fillStyle = `rgb(${Math.round((treeCol[0] + tr.v * 18) * f)},${Math.round((treeCol[1] - Math.abs(tr.v) * 8) * f)},${Math.round(treeCol[2] * f)})`
+              g.globalAlpha = 0.95 * leaf
+              g.beginPath(); g.arc(cx, cy, r, 0, 7); g.arc(cx - r * 0.55, cy + r * 0.28, r * 0.72, 0, 7); g.arc(cx + r * 0.55, cy + r * 0.28, r * 0.72, 0, 7); g.fill()
+              g.globalAlpha = 0.18 * leaf * (1 - night * 0.6); g.fillStyle = '#ffffff'; g.beginPath(); g.arc(cx - r * 0.25, cy - r * 0.3, r * 0.5, 0, 7); g.fill()
+              if (sT === 'spring') { g.fillStyle = '#fbcfe8'; g.globalAlpha = 0.85 * leaf; for (let k = 0; k < 7; k++) { g.beginPath(); g.arc(cx + (rnd(tr.ph * 9 + k) - 0.5) * r * 1.7, cy + (rnd(tr.ph * 7 + k + 5) - 0.5) * r * 1.3, 1.5 * s2 + 0.4, 0, 7); g.fill() } }
+            }
+            if (!still && (sT === 'autumn' || sT === 'spring') && sPart > 0.3 && leaf > 0.5 && gw > 0.8) {  // now and then a leaf (or petal) lets go of the canopy
+              tr.acc = (tr.acc || 0) + sec3 * 0.9 * (0.6 + 0.8 * rnd(tr.ph))
+              if (tr.acc >= 1 && shed.length < 140) {
+                tr.acc = 0
+                shed.push({ x: cx + (Math.random() - 0.5) * r * 1.4, y: cy + r * 0.4 + Math.random() * r * 0.4, vx: 0, vy: 0, vt: 22 + Math.random() * 26, ph: Math.random() * 6.3, rot: Math.random() * 6.3, c: Math.floor(Math.random() * 5), sz: (1.1 + Math.random() * 0.8) * s2 * 1.15, rest: 0, age: 0, kind: sT })
+              }
+            }
+            if (sT === 'autumn') for (let k = 0; k < 5; k++) { g.globalAlpha = 0.7 * sPart; g.fillStyle = LEAF[k % 5]; g.fillRect(tr.x + (rnd(tr.ph * 5 + k) - 0.5) * 22, base + 0.5 + (k % 2) * 2, 2, 1.2) }  // fallen leaves
+          }
+        }
+      }
+      if (shed.length) {  // leaves and petals in the air: they fall to a terminal speed, flutter, drift with the wind, land, and fade after a few seconds
+        const sec3 = Math.min(dt, 100) / 1000, base2 = H - ROAD, dk2 = night * 0.3
+        for (let i = shed.length - 1; i >= 0; i--) {
+          const q = shed[i]
+          if (!q.rest) {
+            q.vy += (q.vt - q.vy) * (1 - Math.exp(-sec3 / 0.6)); q.vx += (4 + 55 * wn - q.vx) * (1 - Math.exp(-sec3 / 0.8))
+            q.x += (q.vx + Math.sin(t / 500 + q.ph) * 18) * sec3; q.y += q.vy * sec3; q.rot += (1.5 + Math.sin(t / 400 + q.ph)) * sec3 * 2
+            const gy = base2 - 1 + (q.ph % 1) * 2.5
+            if (q.y >= gy) { q.rest = 1; q.age = 0; q.y = gy }
+          } else { q.age += sec3; if (q.age > 6) { shed.splice(i, 1); continue } }
+          g.save(); g.translate(q.x, q.y); g.rotate(q.rot); g.scale(1, q.rest ? 0.35 : 0.55 + 0.45 * Math.cos(t / 280 + q.ph))
+          g.globalAlpha = 0.9 * (q.rest ? Math.max(0, 1 - Math.max(0, q.age - 3) / 3) : 1) * (1 - dk2)
+          g.fillStyle = q.kind === 'autumn' ? LEAF[q.c] : PETAL[q.c % 4]
+          g.beginPath(); g.ellipse(0, 0, q.sz * 1.5, q.sz, 0, 0, 7); g.fill(); g.restore()
         }
       }
       if (!still) {  // people walking on the pavement
@@ -519,20 +780,24 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           const al = ss(2 + 12 * shown - q.i)
           if (al < 0.02) continue
           const fy = H - ROAD + 0.5, sw = Math.sin(t / 150 + q.ph) * 1.3
+          g.save(); g.translate(q.x, fy); g.scale(CAR_Z, CAR_Z); g.translate(-q.x, -fy)
           g.globalAlpha = al * 0.9; g.fillStyle = g.strokeStyle = mix(PEOPLE[q.i % PEOPLE.length], '#0b1a2b', night * 0.4); g.lineWidth = 1
           g.fillRect(q.x - 1.2, fy - 5, 2.4, 3.4)
           g.beginPath(); g.arc(q.x, fy - 6.4, 1.3, 0, 7); g.fill()
           g.beginPath(); g.moveTo(q.x - 0.5, fy - 1.6); g.lineTo(q.x - 0.5 + sw, fy); g.moveTo(q.x + 0.5, fy - 1.6); g.lineTo(q.x + 0.5 - sw, fy); g.stroke()
+          g.restore()
         }
       }
       const ls = still ? 'g' : lightAt(t)  // traffic lights
       for (const lx of world.lights) {
+        g.save(); g.translate(lx, H - ROAD); g.scale(CAR_Z, CAR_Z); g.translate(-lx, -(H - ROAD))
         g.globalAlpha = 0.8; g.fillStyle = '#334155'; g.fillRect(lx, H - ROAD - 22, 1.5, 22); g.fillRect(lx - 2, H - ROAD - 31, 5.5, 11)
         ;[['r', '#ef4444'], ['a', '#f59e0b'], ['g', '#22c55e']].forEach(([k, col], j) => {
           g.fillStyle = col; g.globalAlpha = ls === k ? 1 : 0.18
           g.beginPath(); g.arc(lx + 0.75, H - ROAD - 28.3 + j * 2.8, 1.2, 0, 7); g.fill()
           if (ls === k && night > 0.05) { g.globalAlpha = night * 0.7; g.beginPath(); g.arc(lx + 0.75, H - ROAD - 28.3 + j * 2.8, 4, 0, 7); g.fill() }
         })
+        g.restore()
       }
       if (wf > 0.01) {  // fog banks drifting slowly
         for (let i = 0; i < 5; i++) {
@@ -551,16 +816,24 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
       fog.addColorStop(0, clear(c.haze)); fog.addColorStop(1, c.haze)
       g.globalAlpha = 0.45; g.fillStyle = fog; g.fillRect(0, H - 90, W, 90)
       g.globalAlpha = 0.6; g.fillStyle = c.road; g.fillRect(0, H - ROAD, W, ROAD)
+      g.globalAlpha = 0.3; g.fillStyle = mix('#e5e7eb', '#9aa8bd', night); for (let rx = 6; rx < W; rx += 24) g.fillRect(rx, H - 5.5, 11, 1)  // the dashed line between the lanes
+      if (wr > 0.02) {  // wet street: a sheen, puddles, and the street lamps reflected in them
+        g.globalAlpha = 0.12 * wr; g.fillStyle = mix('#ffffff', '#9db8d8', night); g.fillRect(0, H - ROAD, W, ROAD)
+        g.globalAlpha = 0.4 * wr; g.fillStyle = mix('#cfe3f7', '#2e5584', night)
+        for (let i = 0; i < 9; i++) { g.beginPath(); g.ellipse(rnd(i + 2100) * W, H - 3 - rnd(i + 2150) * 7, 12 + rnd(i + 2200) * 16, 1.6, 0, 0, 7); g.fill() }
+        if (lampAmt > 0.05) for (const lx of world.lamps) { g.globalAlpha = lampAmt * wr * 0.8; g.drawImage(glow.current.warm, lx + 4.5 - 9, H - ROAD + 1, 18, 13) }
+      }
       if (!still) {
         for (const c2 of cars) {
           const i = c2.i, al = ss(3 + 14 * shown - i)
           if (al < 0.02) continue
-          const { dir, bus, suv, len } = c2, yb = H - (dir > 0 ? 2 : 7)  // two lanes, one each way
-          g.save(); g.translate(c2.x, yb); g.scale(dir, 1)  // drawn facing right, flipped for the other lane
+          const { dir, bus, suv } = c2, len = c2.len / CAR_Z, yb = H - (dir > 0 ? 2 : 7)  // two lanes, one each way
+          g.save(); g.translate(c2.x, yb); g.scale(dir * CAR_Z, CAR_Z)  // drawn facing right, flipped for the other lane
           g.globalAlpha = al
           // headlight beam, stronger at night
           g.fillStyle = '#fff4c2'; g.globalAlpha = al * (0.1 + 0.25 * night)
           g.beginPath(); g.moveTo(len, -2.6); g.lineTo(len + 16, -4.2); g.lineTo(len + 16, -0.4); g.closePath(); g.fill()
+          g.globalAlpha = al * 0.28; g.fillStyle = '#000'; g.beginPath(); g.ellipse(len / 2, 0.4, len * 0.58, 1.2, 0, 0, 7); g.fill()  // shadow on the road
           g.globalAlpha = al * 0.95
           g.fillStyle = mix(CAR_COLORS[i % CAR_COLORS.length], '#0b1a2b', night * 0.45)
           if (bus) {
@@ -575,22 +848,41 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           g.globalAlpha = al; g.fillStyle = '#0f172a'  // wheels
           g.beginPath(); g.arc(len * 0.22, -0.9, 1.5, 0, 7); g.arc(len * 0.78, -0.9, 1.5, 0, 7); g.fill()
           g.fillStyle = '#fff4c2'; g.fillRect(len - 1.2, -3, 1.2, 1.3)  // headlight
-          g.fillStyle = '#f87171'; g.globalAlpha = al * (c2.v < c2.base * 0.5 ? 1 : 0.8); g.fillRect(0, -3, 1.2, 1.3)  // tail light (brighter when braking)
+          g.fillStyle = '#f87171'; g.globalAlpha = al * ((c2.acc || 0) < -15 ? 1 : 0.7); g.fillRect(0, -3, 1.2, 1.3)  // tail light (brighter while braking)
           g.restore()
         }
       }
-      if (wr > 0.01) {  // rain: streaks, ripples on the road, and now and then lightning at night
-        const sec = dt / 1000
-        g.strokeStyle = mix('#8fb3d9', '#b6d2f0', night); g.lineWidth = 1; g.globalAlpha = 0.4 * wr
-        g.beginPath()
-        for (const d of drops) {
-          d.y += (0.75 + d.v * 0.5) * sec * 1.1; d.x -= d.v * sec * 0.07
-          if (d.y > 1) { d.y -= 1.05; d.x = rnd(d.x * 999 + t) }
-          if (d.x < 0) d.x += 1
-          const px = d.x * W, py = d.y * H
-          g.moveTo(px, py); g.lineTo(px - 2.5, py - d.l)
+      if (wr > 0.02 && !still) for (const c2 of cars) {  // the cars' lights reflected in the wet road
+        const al = ss(3 + 14 * shown - c2.i)
+        if (al < 0.02) continue
+        g.globalAlpha = al * wr * (0.25 + 0.5 * night); g.drawImage(sp('255,244,194'), c2.x + (c2.dir > 0 ? c2.len - 4 : -10), H - 5, 14, 8)
+      }
+      if (wr > 0.01) {  // rain: three depths of streaks, light haze round the lamps, splashes and ripples on the road, ground spray, and lightning
+        const sec = Math.min(dt, 100) / 1000, lit = mix('#8fb3d9', '#c9defa', night)
+        g.lineCap = 'round'
+        for (let z = 0; z < 3; z++) {  // far drops are short, faint and slow; near drops are long, bright and fast
+          const spd = [0.9, 1.35, 2][z], slant = [0.4, 0.7, 1][z]
+          g.strokeStyle = lit; g.lineWidth = [0.7, 1, 1.5][z]; g.globalAlpha = [0.2, 0.34, 0.5][z] * wr; g.beginPath()
+          for (const d of drops) {
+            if (d.z !== z) continue
+            d.y += (0.75 + d.v * 0.5) * sec * spd; d.x -= d.v * sec * (0.07 + 0.25 * wn) * slant
+            if (d.y > 1) { d.y -= 1.05; d.x = rnd(d.x * 999 + t) }
+            if (d.x < 0) d.x += 1
+            const px = d.x * W, py = d.y * H
+            g.moveTo(px, py); g.lineTo(px - (2.5 + 9 * wn) * slant, py - d.l * [0.8, 1.3, 2][z])
+          }
+          g.stroke()
         }
-        g.stroke()
+        if (lampAmt > 0.2) for (const lx of world.lamps) { g.globalAlpha = 0.3 * wr * lampAmt; g.drawImage(glow.current.warm, lx + 7 - 38, H - ROAD - 24 - 38, 76, 76) }  // the lamp's light caught in the rain
+        const mc = mix('#eaf0f8', '#96afcd', night), spray = g.createLinearGradient(0, H - 70, 0, H)
+        spray.addColorStop(0, clear(mc)); spray.addColorStop(1, mc); g.globalAlpha = 0.22 * wr; g.fillStyle = spray; g.fillRect(0, H - 70, W, 70)  // spray rising off the street
+        g.strokeStyle = '#dbeafe'; g.lineWidth = 0.9
+        for (let i = 0; i < 26; i++) {  // splashes: tiny sprays thrown up by drops hitting the road
+          const cyc = t / 1000 / (0.5 + rnd(i + 2300) * 0.4) + rnd(i + 2310), f = cyc - Math.floor(cyc), sd = Math.floor(cyc)
+          const sx = rnd(i + 2320 + sd * 7) * W, sy = H - 2 - rnd(i + 2330 + sd * 3) * 9, r = 1.5 + f * 4
+          g.globalAlpha = (1 - f) * 0.6 * wr
+          for (const a of [-1.1, 0, 1.1]) { g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.sin(a) * r, sy - Math.cos(a) * r * (1 - f * 0.4)); g.stroke() }
+        }
         g.lineWidth = 0.8; g.strokeStyle = '#cfe3f7'
         for (let i = 0; i < 14; i++) {
           const cyc = t / 1000 / (1.2 + rnd(i + 600) * 0.8) + rnd(i + 610), f = cyc - Math.floor(cyc)
@@ -599,30 +891,57 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           g.beginPath(); g.ellipse(rnd(i + 300 + Math.floor(cyc) * 7) * W, H - 2 - rnd(i + 310 + Math.floor(cyc) * 3) * 8, rxp, rxp * 0.3, 0, 0, 7); g.stroke()
         }
         const lf = (t / 1000 / 17) % 1, lc = Math.floor(t / 17000)
-        if (night > 0.3 && wr > 0.5 && lf < 0.012 && rnd(lc + 55) > 0.4) {
-          g.globalAlpha = 0.3 * (1 - lf / 0.012) * night * wr; g.fillStyle = '#e8f0ff'; g.fillRect(0, 0, W, H)
+        if (wr > 0.5 && lf < 0.02 && rnd(lc + 55) > 0.35) {  // lightning: a double flash and a forked bolt
+          const u = lf / 0.02, fl = u < 0.25 ? 1 : u < 0.45 ? 0.15 : u < 0.6 ? 0.9 : Math.max(0, 1 - (u - 0.6) / 0.4)
+          g.globalAlpha = 0.3 * fl * (0.35 + 0.65 * night) * wr; g.fillStyle = '#e8f0ff'; g.fillRect(0, 0, W, H)
+          if (u < 0.6) {
+            const x0 = W * (0.12 + 0.76 * rnd(lc + 60)), ty = H * (0.5 + 0.12 * rnd(lc + 61)), pts = [[x0, 0]]
+            let px = x0
+            for (let k = 1; k <= 11; k++) { px += (rnd(lc * 17 + k) - 0.5) * 46; pts.push([px, (ty * k) / 11]) }
+            const dir = rnd(lc + 63) > 0.5 ? 1 : -1, br = [pts[5]]
+            let bx = pts[5][0], by = pts[5][1]
+            for (let k = 1; k <= 4; k++) { bx += dir * (10 + rnd(lc * 5 + k) * 12); by += 22 + rnd(lc * 9 + k) * 10; br.push([bx, by]) }
+            const line = (arr) => { g.beginPath(); arr.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke() }
+            g.lineJoin = 'round'
+            g.strokeStyle = '#bcd2ff'; g.lineWidth = 6; g.globalAlpha = 0.25 * fl; line(pts)
+            g.strokeStyle = '#ffffff'; g.lineWidth = 1.8; g.globalAlpha = 0.95 * fl; line(pts)
+            g.lineWidth = 1.1; g.globalAlpha = 0.8 * fl; line(br)
+          }
         }
       }
       if (wsn > 0.01) {  // snow: flakes drifting down with a gentle sway
         const sec = dt / 1000
         g.fillStyle = mix('#ffffff', '#e2e8f0', night); g.globalAlpha = 0.75 * wsn
         for (const f of flakes) {
-          f.y += (0.03 + f.v * 0.04) * sec; f.x += Math.sin(t / 1500 + f.ph) * 0.012 * sec
+          f.y += (0.03 + f.v * 0.04) * sec; f.x += (Math.sin(t / 1500 + f.ph) * 0.012 + wn * 0.05) * sec
           if (f.y > 1) { f.y -= 1.02; f.x = rnd(f.x * 777 + t) }
           f.x = (f.x + 1) % 1
           g.beginPath(); g.arc(f.x * W, f.y * H, f.r, 0, 7); g.fill()
+        }
+      }
+      if (!still && sPart > 0.02 && sKind === 'summer') {  // fireflies on summer nights
+        const sec = Math.min(dt, 100) / 1000
+        if (sKind === 'summer') {
+          if (night > 0.2) {
+            g.globalCompositeOperation = 'lighter'
+            for (let i = 0; i < 16; i++) {
+              const fx = (((rnd(i + 3300) * W + Math.sin(t / 3000 + i * 1.7) * 40 + wph * 4 * (i % 3)) % W) + W) % W, fy = H - ROAD - 10 - rnd(i + 3350) * H * 0.12 + Math.sin(t / 1700 + i * 2.3) * 10
+              g.globalAlpha = (0.35 + 0.65 * Math.max(0, Math.sin(t / 900 + i * 2.9))) * night * sPart; g.drawImage(sp('220,255,120'), fx - 8, fy - 8, 16, 16)
+            }
+            g.globalCompositeOperation = 'source-over'
+          }
         }
       }
       // paper lanterns, lit, rising from the street while the fireworks go off (night)
       if (!still && (fw.lanterns.length || (t < fw.until && night > 0.35))) {
         const sec = Math.min(dt, 100) / 1000
         if (t < fw.until && night > 0.35 && t >= fw.nextL) {
-          fw.lanterns.push({ x: W * (0.04 + 0.92 * Math.random()), y: H - ROAD - 4, vy: -(24 + Math.random() * 16), ph: Math.random() * 6.3, col: LANTERN[Math.floor(Math.random() * 4)], s: 0.85 + Math.random() * 0.5 })
+          fw.lanterns.push({ x: W * (0.04 + 0.92 * Math.random()), y: H - ROAD - 4, vy: 0, vt: -(24 + Math.random() * 16), ph: Math.random() * 6.3, col: LANTERN[Math.floor(Math.random() * 4)], s: 0.85 + Math.random() * 0.5 })
           fw.nextL = t + 380 + Math.random() * 420
         }
         for (let i = fw.lanterns.length - 1; i >= 0; i--) {
           const l = fw.lanterns[i]
-          l.y += l.vy * sec
+          l.vy += (l.vt - l.vy) * (1 - Math.exp(-sec / 1.6)); l.y += l.vy * sec; l.x += (4 + 22 * wn) * sec
           if (l.y < -40) { fw.lanterns.splice(i, 1); continue }
           const lx = l.x + Math.sin(t / 1300 + l.ph) * 14, fl = 0.85 + 0.15 * Math.sin(t / 130 + l.ph * 3)
           const al = night * ss((H - ROAD - l.y) / 60) * ss((l.y + 30) / (H * 0.2)), s = l.s
@@ -643,16 +962,16 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
           fest.acc += 90 * sec
           while (fest.acc >= 1) {
             fest.acc -= 1
-            fest.conf.push({ x: Math.random() * W, y: -12, vy: 70 + Math.random() * 110, ph: Math.random() * 6.3, w: 4 + Math.random() * 4, h: 2 + Math.random() * 3, rot: Math.random() * 6.3, vr: (Math.random() - 0.5) * 8, col: Math.floor(Math.random() * 7) })
+            fest.conf.push({ x: Math.random() * W, y: -12, vy: 0, vt: 70 + Math.random() * 110, ph: Math.random() * 6.3, w: 4 + Math.random() * 4, h: 2 + Math.random() * 3, rot: Math.random() * 6.3, vr: (Math.random() - 0.5) * 8, col: Math.floor(Math.random() * 7) })
           }
           if (t >= fest.nextB && t < fest.until - 1200) {
-            fest.balloons.push({ x: W * (0.05 + 0.9 * Math.random()), y: H - ROAD - 8, vy: -(45 + Math.random() * 35), ph: Math.random() * 6.3, r: 7 + Math.random() * 3.5, col: Math.floor(Math.random() * 7) })
+            fest.balloons.push({ x: W * (0.05 + 0.9 * Math.random()), y: H - ROAD - 8, vy: 0, vt: -(45 + Math.random() * 35), ph: Math.random() * 6.3, r: 7 + Math.random() * 3.5, col: Math.floor(Math.random() * 7) })
             fest.nextB = t + 350 + Math.random() * 350
           }
         }
         for (let i = fest.balloons.length - 1; i >= 0; i--) {
           const b = fest.balloons[i]
-          b.y += b.vy * sec
+          b.vy += (b.vt - b.vy) * (1 - Math.exp(-sec / 1.1)); b.y += b.vy * sec; b.x += (3 + 22 * wn) * sec  // buoyancy against drag: it accelerates to a steady climb
           if (b.y < -50) { fest.balloons.splice(i, 1); continue }
           const bx = b.x + Math.sin(t / 900 + b.ph) * 10, ky = b.y + b.r * 1.2
           g.globalAlpha = 0.45 * dayFest; g.strokeStyle = '#64748b'; g.lineWidth = 0.8
@@ -665,7 +984,7 @@ export default function Skyline({ pct, dark, accent, show = true, tod = true, we
         }
         for (let i = fest.conf.length - 1; i >= 0; i--) {
           const q = fest.conf[i]
-          q.y += q.vy * sec; q.x += Math.sin(t / 700 + q.ph) * 30 * sec; q.rot += q.vr * sec
+          q.vy += (q.vt - q.vy) * (1 - Math.exp(-sec / 0.5)); q.y += q.vy * sec; q.x += (Math.sin(t / 700 + q.ph) * 30 + 8 + 60 * wn) * sec; q.rot += q.vr * sec  // falls at terminal speed, flutters, drifts with the wind
           if (q.y > H + 20) { fest.conf.splice(i, 1); continue }
           g.save(); g.translate(q.x, q.y); g.rotate(q.rot); g.scale(1, Math.cos(t / 250 + q.ph))  // tumbling
           g.globalAlpha = 0.95 * dayFest; g.fillStyle = CONFETTI[q.col]; g.fillRect(-q.w / 2, -q.h / 2, q.w, q.h)

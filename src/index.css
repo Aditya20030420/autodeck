@@ -20,14 +20,26 @@ body { font-family: var(--font-display); -webkit-font-smoothing: antialiased; ba
 }
 :where(.dark) body { background: #16304A linear-gradient(165deg, #1A3856 0%, #15304B 50%, #102841 100%) fixed; }  /* navy (blends with the app icon) */
 
+/* Aurora colours: by default they follow the accent colour; the Aurora colours setting overrides these six (set from TodoApp) */
+/* registered so they can be animated: changing the aurora colours, or switching to/from the Aurora background, glides instead of snapping */
+@property --au1 { syntax: '<number>+'; inherits: true; initial-value: 0 0 0; }
+@property --au2 { syntax: '<number>+'; inherits: true; initial-value: 0 0 0; }
+@property --au3 { syntax: '<number>+'; inherits: true; initial-value: 0 0 0; }
+@property --au4 { syntax: '<number>+'; inherits: true; initial-value: 0 0 0; }
+@property --au5 { syntax: '<number>+'; inherits: true; initial-value: 0 0 0; }
+@property --au6 { syntax: '<number>+'; inherits: true; initial-value: 0 0 0; }
+@property --tn { syntax: '<number>'; inherits: true; initial-value: 0; }  /* how much the boxes are tinted (0 off, 1 full) */
+:root { --tn: 0; transition: --au1 .9s ease, --au2 .9s ease, --au3 .9s ease, --au4 .9s ease, --au5 .9s ease, --au6 .9s ease, --tn .9s ease; }
+:root[data-bg="aurora"] { --tn: 1; }
+:root { --au1: var(--ac2); --au2: var(--ac1); --au3: 132 204 22; --au4: 99 102 241; --au5: 56 189 248; --au6: 167 139 250; }
 /* Aurora backdrop — Electric Teal + Laser Lime orbs behind the glass */
 body::before {
   content: ""; position: fixed; inset: -6%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(42rem 42rem at 10% 6%, rgb(var(--ac2) / .20), transparent 62%),
-    radial-gradient(36rem 36rem at 90% 14%, rgb(var(--ac1) / .16), transparent 62%),
-    radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.14), transparent 62%),
-    radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.12), transparent 62%);
+    radial-gradient(42rem 42rem at 10% 6%, rgb(var(--au1) / .20), transparent 62%),
+    radial-gradient(36rem 36rem at 90% 14%, rgb(var(--au2) / .16), transparent 62%),
+    radial-gradient(40rem 40rem at 78% 90%, rgb(var(--au3) / .14), transparent 62%),
+    radial-gradient(34rem 34rem at 8% 82%, rgb(var(--au4) / .12), transparent 62%);
   animation: aurora-drift 38s ease-in-out infinite;
   will-change: transform;
 }
@@ -35,17 +47,17 @@ body::before {
 html::before {
   content: ""; position: fixed; inset: -8%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(34rem 30rem at 62% 8%, rgba(56,189,248,.16), transparent 62%),
-    radial-gradient(30rem 34rem at 20% 58%, rgba(167,139,250,.14), transparent 62%),
-    radial-gradient(32rem 30rem at 94% 62%, rgb(var(--ac1) / .13), transparent 62%);
+    radial-gradient(34rem 30rem at 62% 8%, rgb(var(--au5) / .16), transparent 62%),
+    radial-gradient(30rem 34rem at 20% 58%, rgb(var(--au6) / .14), transparent 62%),
+    radial-gradient(32rem 30rem at 94% 62%, rgb(var(--au2) / .13), transparent 62%);
   animation: aurora-drift-b 52s ease-in-out infinite;
   will-change: transform;
 }
 html:where(.dark)::before {
   background:
-    radial-gradient(34rem 30rem at 62% 8%, rgba(56,189,248,.26), transparent 62%),
-    radial-gradient(30rem 34rem at 20% 58%, rgba(167,139,250,.24), transparent 62%),
-    radial-gradient(32rem 30rem at 94% 62%, rgb(var(--ac1) / .22), transparent 62%);
+    radial-gradient(34rem 30rem at 62% 8%, rgb(var(--au5) / .26), transparent 62%),
+    radial-gradient(30rem 34rem at 20% 58%, rgb(var(--au6) / .24), transparent 62%),
+    radial-gradient(32rem 30rem at 94% 62%, rgb(var(--au2) / .22), transparent 62%);
 }
 /* fine film grain over everything behind the glass: hides colour banding in the soft gradients and adds a little depth */
 html::after {
@@ -55,10 +67,10 @@ html::after {
 html:where(.dark)::after { opacity: .1; filter: invert(1); }
 :where(.dark) body::before {
   background:
-    radial-gradient(42rem 42rem at 10% 6%, rgb(var(--ac2) / .40), transparent 62%),
-    radial-gradient(36rem 36rem at 90% 14%, rgb(var(--ac1) / .28), transparent 62%),
-    radial-gradient(40rem 40rem at 78% 90%, rgba(132,204,22,.24), transparent 62%),
-    radial-gradient(34rem 34rem at 8% 82%, rgba(99,102,241,.26), transparent 62%);
+    radial-gradient(42rem 42rem at 10% 6%, rgb(var(--au1) / .40), transparent 62%),
+    radial-gradient(36rem 36rem at 90% 14%, rgb(var(--au2) / .28), transparent 62%),
+    radial-gradient(40rem 40rem at 78% 90%, rgb(var(--au3) / .24), transparent 62%),
+    radial-gradient(34rem 34rem at 8% 82%, rgb(var(--au4) / .26), transparent 62%);
 }
 /* the aurora orbs show only when that backdrop is chosen */
 body::before, html::before { transition: opacity .9s ease; }
@@ -93,6 +105,38 @@ html:not([data-bg="aurora"])::before, html:not([data-bg="aurora"]) body::before 
   border: 1px solid rgba(255,255,255,.4);
 }
 :where(.dark) .glass-sm { background: rgba(31,54,82,.9); border-color: rgba(255,255,255,.07); }
+/* The boxes carry a faint tint of the aurora colours (a wash and a coloured edge) in proportion to --tn, so it fades in and out with the background */
+.glass, .glass-sm {
+  background-image: linear-gradient(135deg, rgb(var(--au1) / calc(var(--tn) * .11)), rgb(var(--au2) / calc(var(--tn) * .07)) 60%, rgb(var(--au4) / calc(var(--tn) * .08)));
+  border-color: color-mix(in srgb, rgba(255,255,255,.38), rgb(var(--au1) / .32) calc(var(--tn) * 100%));
+}
+:where(.dark) .glass, :where(.dark) .glass-sm {
+  background-image: linear-gradient(135deg, rgb(var(--au1) / calc(var(--tn) * .16)), rgb(var(--au2) / calc(var(--tn) * .09)) 60%, rgb(var(--au4) / calc(var(--tn) * .12)));
+  border-color: color-mix(in srgb, rgba(255,255,255,.08), rgb(var(--au1) / .28) calc(var(--tn) * 100%));
+}
+@media (prefers-reduced-motion: reduce) { :root { transition: none; } }
+
+/* The header pills (name, toolbar): a frosted sheet whose edges FADE OUT (a mask on a layer behind the content) instead of ending in a line,
+   so there is no outline or step against any background. The content sits inside the solid middle of the sheet. */
+.pill-soft { position: relative; isolation: isolate; }
+.pill-soft::before {
+  content: ""; position: absolute; inset: -16px; z-index: -1; pointer-events: none; border-radius: 9999px;
+  background-color: rgba(238,242,248,.7);
+  background-image: linear-gradient(135deg, rgb(var(--au1) / calc(var(--tn) * .10)), rgb(var(--au4) / calc(var(--tn) * .07)));
+  backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent), linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent), linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+  mask-composite: intersect;
+}
+:where(.dark) .pill-soft::before {
+  background-color: rgba(24,46,72,.68);
+  background-image: linear-gradient(135deg, rgb(var(--au1) / calc(var(--tn) * .14)), rgb(var(--au4) / calc(var(--tn) * .10)));
+}
+@media (prefers-reduced-transparency: reduce) {
+  .pill-soft::before { backdrop-filter: none; -webkit-backdrop-filter: none; background-color: rgba(238,242,247,.95); }
+  :where(.dark) .pill-soft::before { background-color: rgba(31,54,82,.95); }
+}
 
 /* Accessibility: drop transparency/blur when the OS asks for it */
 @media (prefers-reduced-transparency: reduce) {
