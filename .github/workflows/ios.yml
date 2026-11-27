@@ -1,0 +1,79 @@
+name: Build iOS app (.ipa)
+
+# Builds AutoDeck for iPhone on a GitHub Mac (free for a public repository) and keeps the .ipa as a downloadable artifact.
+# Run it from the Actions page ("Run workflow"). Fill in "tag" (for example v1.0.78) to also attach the .ipa to that release.
+#
+# The .ipa is NOT signed: an iPhone only installs apps that Apple has signed. Sign it on your own computer with a sideloading
+# tool (AltStore or Sideloadly, free Apple ID, valid for 7 days), or sign it with a paid Apple Developer account and upload to TestFlight.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach the .ipa to (leave empty to only keep it as an artifact)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Version from package.json
+        run: |
+          v=$(node -p "require('./package.json').version")
+          IFS=. read -r a b c <<< "$v"
+          echo "APP_VERSION=$v" >> "$GITHUB_ENV"
+          echo "APP_BUILD=$((a * 10000 + b * 100 + c))" >> "$GITHUB_ENV"
+          echo "IPA=AutoDeck-$v-unsigned.ipa" >> "$GITHUB_ENV"
+
+      - name: Create the iOS project and copy the web app into it
+        run: |
+          npx cap add ios
+          npx cap sync ios
+
+      - name: App icon (the AutoDeck icon, 1024 px, no transparency as iOS requires)
+        run: |
+          node -e "
+          const sharp = require('sharp'); const fs = require('fs');
+          sharp(fs.readFileSync('public/favicon.svg'), { density: 600 }).resize(1024, 1024).flatten({ background: '#16304A' }).png().toFile('/tmp/icon1024.png').then(() => console.log('icon ok'))
+          "
+          for f in $(find ios -path '*AppIcon.appiconset*' -name '*.png'); do cp /tmp/icon1024.png "$f"; echo "icon -> $f"; done
+
+      - name: Show the Xcode in use
+        run: xcodebuild -version
+
+      - name: Build (no signing)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_BUILD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive | tail -40
+
+      - name: Package the .ipa
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" Payload/
+          zip -qr "$IPA" Payload
+          ls -l "$IPA"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: AutoDeck-ipa
+          path: ${{ env.IPA }}
+
+      - name: Attach to the release
+        if: ${{ inputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "$IPA" --clobber --repo "$GITHUB_REPOSITORY"
